@@ -17,7 +17,11 @@ const LAST_PATH = "omnimask:lastPath";
 
 function autoName(p: string): string {
   const base = p.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).pop() || "";
-  return base ? `${base} 密钥检测` : "";
+  return base ? `${base} 脱敏` : "";
+}
+
+function modeText(m: string): string {
+  return m === "mask" ? "打码" : m === "delete" ? "删除" : m === "replace" ? "代号替换" : m === "encrypt" ? "加密" : "数字偏移";
 }
 
 export default function HomePage() {
@@ -104,11 +108,11 @@ export default function HomePage() {
     <>
       <section className="hero">
         <div>
-          <div className="eyebrow">code secret scanner · local first</div>
-          <h1>把密钥留在<em>源头</em>。</h1>
+          <div className="eyebrow">multi-modal desensitization · local first</div>
+          <h1>把敏感信息留在<em>源头</em>。</h1>
           <p className="sub">
-            填入本机代码文件或目录，复用 keyleak 规则库原地扫描硬编码密钥与敏感串。
-            先检测、再人工审核、最后导出，源文件目录不会被修改或复制。
+            填入本机文件或目录，按类型自动检测：代码密钥、文本 PII（手机/身份证/邮箱/银行卡/姓名/地址）、
+            图像人脸/二维码、音频语音敏感片段。先检测、再审核、最后导出，源文件不会被修改或复制。
           </p>
         </div>
         <div className="hero-stats">
@@ -186,7 +190,7 @@ export default function HomePage() {
                       </div>
                       <div className="policy-desc">{p.description}</div>
                       <div className="policy-meta">
-                        <span className="badge">{p.mode === "mask" ? "打码" : p.mode === "delete" ? "删除" : "代号替换"}</span>
+                        <span className="badge">{modeText(p.mode)}</span>
                         {p.reversible && <span className="badge lime">可逆</span>}
                         {p.min_confidence > 0 && <span className="badge amber">阈值 {p.min_confidence}</span>}
                         {p.custom_regex.length > 0 && <span className="badge teal">{p.custom_regex.length} 条自定义</span>}
@@ -276,7 +280,7 @@ export default function HomePage() {
             <div className="card-body" style={{ display: "grid", gap: 12 }}>
               {[
                 ["01", "输入", "填入本地文件或目录路径"],
-                ["02", "检测", "keyleak 规则库原地逐文件匹配"],
+                ["02", "检测", "按类型自动：代码密钥 / 文本 PII / 图像 / 音频"],
                 ["03", "审核", "逐条确认、忽略或调整方式"],
                 ["04", "脱敏", "生成脱敏内容，不写回源目录"],
                 ["05", "导出", "ZIP + 脱敏报告，可附映射表"],

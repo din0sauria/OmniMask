@@ -11,11 +11,17 @@ from ..core.storage import (
     load_findings, load_task, new_id, now, read_json, save_findings, save_task, task_dir,
 )
 from ..models.schemas import DetectIn, MaskIn, RestoreIn, ReviewIn, TaskCreateIn
+from ..services.detect.audio import detect_audio_files
 from ..services.detect.code import _is_text_file, detect_files
+from ..services.detect.image import detect_image_files
+from ..services.detect.text import detect_text_files
+from ..services.detect.video import detect_video_files
 from ..services.ingest import count_lines, read_text
 from ..services.mask.code import (
     build_export_zip, build_mapping, build_restore_zip, compute, preview_file, restore_info,
 )
+from ..services.mask.media import compute_media
+from ..services.media import label_of, partition
 from ..services.policy import get_policy
 from ..services.report import build_report, summarize
 
@@ -117,6 +123,7 @@ def create_task(body: TaskCreateIn):
         raise HTTPException(400, "该路径下没有可检测的文件")
 
     source = "file" if sp.is_file() else "folder"
+    modality = label_of(partition(infos))
     task = {
         "id": task_id,
         "name": body.name.strip() or sp.name,
@@ -132,6 +139,7 @@ def create_task(body: TaskCreateIn):
         "source": source,
         "source_path": str(sp),
         "root": str(sp.parent if source == "file" else sp),
+        "modality": modality,
     }
     save_task(task)
     return {"code": 0, "msg": "ok", "data": {"task": _public(task), "warnings": warnings}}
@@ -183,33 +191,27 @@ def detect(task_id: str, body: DetectIn | None = None):
         task["policy_id"] = task["policy"]["id"]
     policy = task.get("policy") or {}
     files = [{"id": f["id"], "path": f["path"], "abs": f["abs"]} for f in task["files"]]
-    res = detect_files(files, policy)
+    groups = partition(files)
+    res = detect_files(groups["code"], policy)
+    res2 = detect_text_files(groups["text"], policy)
+    res3 = detect_image_files(groups["image"], policy)
+    res4 = detect_audio_files(groups["audio"], policy)
+    res5 = detect_video_files(groups["video"], policy)
+    scanned = res["scanned"] + res2["scanned"] + res3["scanned"] + res4["scanned"] + res5["scanned"]
+    skipped = res["skipped"] + res2["skipped"] + res3["skipped"] + res4["skipped"] + res5["skipped"]
+    warnings = res["warnings"] + res2["warnings"] + res3["warnings"] + res4["warnings"] + res5["warnings"]
+    all_hits = res["findings"] + res2["findings"] + res3["findings"] + res4["findings"] + res5["findings"]
 
     _prune(task_id)
     rel_by_id = {f["id"]: f["path"] for f in task["files"]}
     findings = []
-    for i, f in enumerate(res["findings"]):
-        findings.append({
-            "id": f"f{i + 1:04d}",
-            "file_id": f["file_id"],
-            "file_path": rel_by_id.get(f["file_id"], f["file_path"]),
-            "rule_name": f["rule_name"],
-            "series": f["series"],
-            "is_mechanical": f["is_mechanical"],
-            "value": f["value"],
-            "match": f["match"],
-            "line_start": f["line_start"],
-            "line_end": f["line_end"],
-            "col_start": f["col_start"],
-            "col_end": f["col_end"],
-            "index_start": f["index_start"],
-            "index_end": f["index_end"],
-            "confidence": f["confidence"],
-            "risk": f["risk"],
-            "status": "pending",
-            "mode": None,
-            "type_label": f["type_label"],
-        })
+    for i, f in enumerate(all_hits):
+        item = dict(f)
+        item["id"] = f"f{i + 1:04d}"
+        item["file_path"] = rel_by_id.get(f.get("file_id"), f.get("file_path", ""))
+        item["status"] = "pending"
+        item["mode"] = None
+        findings.append(item)
     save_findings(task_id, findings)
 
     counts = {}
@@ -223,14 +225,14 @@ def detect(task_id: str, body: DetectIn | None = None):
     task["stats"] = {
         **task.get("stats", {}),
         "total": summary["total"],
-        "scanned": res["scanned"],
-        "skipped": res["skipped"],
-        "warnings": res["warnings"],
+        "scanned": scanned,
+        "skipped": skipped,
+        "warnings": warnings,
         "by_type": summary["by_type"],
         "detected_at": now(),
     }
     save_task(task)
-    return {"code": 0, "msg": "ok", "data": {"task": _public(task), "summary": summary, "warnings": res["warnings"]}}
+    return {"code": 0, "msg": "ok", "data": {"task": _public(task), "summary": summary, "warnings": warnings}}
 
 
 @router.get("/{task_id}/findings")
@@ -308,8 +310,10 @@ def mask(task_id: str, body: MaskIn = MaskIn()):
     if findings and all(f["status"] == "rejected" for f in findings):
         raise HTTPException(400, "所有结果都被忽略了，请至少接受一条后再脱敏")
     res = compute(task, findings, body.accepted_only)
-    stats = res["stats"]
-    if stats["findings_applied"] == 0 and findings:
+    mres = compute_media(task, findings, body.accepted_only)
+    stats = {**res["stats"], **mres["stats"]}
+    applied = stats.get("findings_applied", 0) + stats.get("media_changed", 0)
+    if applied == 0 and findings:
         task["status"] = "detected" if any(f["status"] == "pending" for f in findings) else "reviewed"
         task["updated_at"] = now()
         save_task(task)
@@ -384,7 +388,8 @@ def export(task_id: str, include_mapping: bool = False, inline: bool = False):
     if task.get("status") not in ("masked", "exported"):
         raise HTTPException(400, "请先执行脱敏")
     findings = load_findings(task_id)
-    path = build_export_zip(task, findings, include_mapping)
+    mres = compute_media(task, findings)
+    path = build_export_zip(task, findings, include_mapping, media=mres["outputs"])
     task["status"] = "exported"
     task["updated_at"] = now()
     save_task(task)

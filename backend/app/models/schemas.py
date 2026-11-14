@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-MaskMode = Literal["mask", "delete", "replace"]
+MaskMode = Literal["mask", "delete", "replace", "encrypt", "offset"]
 FindingStatus = Literal["pending", "accepted", "rejected"]
 
 
@@ -22,6 +22,11 @@ class Policy(BaseModel):
     min_confidence: float = Field(default=0.0, ge=0, le=1)
     blocked_series: list[str] = []
     custom_regex: list[CustomRule] = []
+    pii_types: list[str] = []
+    crypto_key: str = ""
+    offset_amount: int = 0
+    offset_round: int = 1
+    voice_change: str = ""
     builtin: bool = False
 
 
@@ -34,6 +39,11 @@ class PolicyIn(BaseModel):
     min_confidence: float = Field(default=0.0, ge=0, le=1)
     blocked_series: list[str] = []
     custom_regex: list[CustomRule] = []
+    pii_types: list[str] = []
+    crypto_key: str = ""
+    offset_amount: int = 0
+    offset_round: int = 1
+    voice_change: str = ""
 
 
 class FileInfo(BaseModel):
@@ -53,6 +63,7 @@ class TaskCreateIn(BaseModel):
     policy_id: str = "standard"
     operator: str = ""
     purpose: str = ""
+    modality: str = ""
 
 
 class Task(BaseModel):
@@ -68,6 +79,7 @@ class Task(BaseModel):
     files: list[FileInfo] = []
     stats: dict = {}
     source: str = "upload"
+    modality: str = "code"
 
 
 class Finding(BaseModel):

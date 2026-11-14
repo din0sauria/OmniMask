@@ -56,7 +56,7 @@ def build_report(task: dict, findings: list[dict]) -> dict:
         "files": task.get("files", []),
         "summary": summarize(findings),
         "stats": task.get("stats", {}),
-        "scope": "代码密钥 / 敏感串检测（code）",
+        "scope": f"多模态检测（{task.get('modality', 'code')}）",
     }
 
 
@@ -93,7 +93,7 @@ def render_markdown(report: dict) -> str:
         "",
         "## 说明",
         "",
-        "- 本报告由 OmniMask 自动生成，仅覆盖代码密钥与敏感串检测。",
+        "- 本报告由 OmniMask 自动生成，覆盖代码密钥与多模态敏感信息检测。",
         "- 源文件目录未被修改；脱敏结果在导出时即时生成。",
         "- 可逆策略的映射表请与导出包分开保管。",
         "- 导出文件中的敏感内容已按策略处理，建议上线前人工复核。",

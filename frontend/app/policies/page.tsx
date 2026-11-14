@@ -18,7 +18,21 @@ type FormState = {
   min_confidence: number;
   blocked: string;
   custom_regex: CustomRule[];
+  pii_types: string[];
+  crypto_key: string;
+  offset_amount: number;
+  offset_round: number;
+  voice_change: string;
 };
+
+const PII_OPTIONS = [
+  ["phone", "手机号"],
+  ["id_card", "身份证号"],
+  ["email", "邮箱"],
+  ["bank_card", "银行卡号"],
+  ["name", "姓名"],
+  ["address", "地址"],
+] as const;
 
 const EMPTY: FormState = {
   name: "",
@@ -29,6 +43,11 @@ const EMPTY: FormState = {
   min_confidence: 0,
   blocked: "certification",
   custom_regex: [],
+  pii_types: [],
+  crypto_key: "",
+  offset_amount: 0,
+  offset_round: 1,
+  voice_change: "",
 };
 
 function regexError(pattern: string): string {
@@ -62,6 +81,11 @@ export default function PoliciesPage() {
         min_confidence: p.min_confidence,
         blocked: p.blocked_series.join(", "),
         custom_regex: p.custom_regex.map((r) => ({ ...r })),
+        pii_types: [...(p.pii_types || [])],
+        crypto_key: p.crypto_key || "",
+        offset_amount: p.offset_amount ?? 0,
+        offset_round: p.offset_round ?? 1,
+        voice_change: p.voice_change || "",
       });
       setEditing("new");
     } else {
@@ -81,6 +105,11 @@ export default function PoliciesPage() {
       min_confidence: p.min_confidence,
       blocked: p.blocked_series.join(", "),
       custom_regex: p.custom_regex.map((r) => ({ ...r })),
+      pii_types: [...(p.pii_types || [])],
+      crypto_key: p.crypto_key || "",
+      offset_amount: p.offset_amount ?? 0,
+      offset_round: p.offset_round ?? 1,
+      voice_change: p.voice_change || "",
     });
     setEditing(p.id);
   }
@@ -103,6 +132,11 @@ export default function PoliciesPage() {
         regex: r.regex,
         confidence: Number(r.confidence) || 0.9,
       })),
+      pii_types: form.pii_types,
+      crypto_key: form.crypto_key.trim(),
+      offset_amount: Number(form.offset_amount) || 0,
+      offset_round: Number(form.offset_round) || 1,
+      voice_change: form.voice_change,
     };
     try {
       setBusy(true);
@@ -129,7 +163,8 @@ export default function PoliciesPage() {
     }
   }
 
-  const modeText = (m: string) => (m === "mask" ? "打码" : m === "delete" ? "删除" : "代号替换");
+  const modeText = (m: string) =>
+    m === "mask" ? "打码" : m === "delete" ? "删除" : m === "replace" ? "代号替换" : m === "encrypt" ? "加密" : "数字偏移";
 
   return (
     <>
@@ -138,7 +173,7 @@ export default function PoliciesPage() {
           <div className="eyebrow">policy studio</div>
           <h1 style={{ fontSize: "clamp(1.8rem, 2.8vw, 2.5rem)" }}>策略配置</h1>
           <p className="sub" style={{ maxWidth: 620 }}>
-            策略决定什么被处理、处理方式与可逆性。内置四套模板，也可以添加自定义正则识别企业内部字段。
+            策略决定什么被处理、处理方式与可逆性。内置多套模板，也支持文本 PII 开关、加密/数字偏移与自定义正则识别企业内部字段。
           </p>
         </div>
         <div className="btn-row">
@@ -227,6 +262,8 @@ export default function PoliciesPage() {
                       <option value="mask">打码（保留首尾）</option>
                       <option value="delete">删除</option>
                       <option value="replace">代号替换</option>
+                      <option value="encrypt">加密（可解密）</option>
+                      <option value="offset">数字偏移</option>
                     </select>
                   </div>
                   <div className="field">
@@ -247,6 +284,46 @@ export default function PoliciesPage() {
                 <div className="field">
                   <label>忽略的规则系列 <span className="hint">逗号分隔，例如 certification, Uri</span></label>
                   <input className="mono" value={form.blocked} onChange={(e) => set("blocked", e.target.value)} placeholder="certification" />
+                </div>
+
+                <div className="divider" />
+                <div className="field">
+                  <label>文本 PII 类型 <span className="hint">留空 = 全部启用</span></label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {PII_OPTIONS.map(([k, label]) => (
+                      <label key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13 }}>
+                        <input type="checkbox" checked={form.pii_types.includes(k)}
+                          onChange={(e) => set("pii_types", e.target.checked ? [...form.pii_types, k] : form.pii_types.filter((x) => x !== k))} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {form.mode === "encrypt" && (
+                  <div className="field">
+                    <label>加密密钥 <span className="hint">留空使用内置默认密钥</span></label>
+                    <input className="mono" value={form.crypto_key} onChange={(e) => set("crypto_key", e.target.value)} placeholder="可选，自定义密钥" />
+                  </div>
+                )}
+                {form.mode === "offset" && (
+                  <div className="form-grid">
+                    <div className="field">
+                      <label>偏移量</label>
+                      <input type="number" value={form.offset_amount} onChange={(e) => set("offset_amount", Number(e.target.value))} />
+                    </div>
+                    <div className="field">
+                      <label>取整到 <span className="hint">1 表示不取整</span></label>
+                      <input type="number" min={1} value={form.offset_round} onChange={(e) => set("offset_round", Number(e.target.value))} />
+                    </div>
+                  </div>
+                )}
+                <div className="field">
+                  <label>音频变声 <span className="hint">媒体任务：pitch 变调 / robot 机器声</span></label>
+                  <select value={form.voice_change} onChange={(e) => set("voice_change", e.target.value)}>
+                    <option value="">不处理（仅静音敏感片段）</option>
+                    <option value="pitch">变调</option>
+                    <option value="robot">机器声</option>
+                  </select>
                 </div>
 
                 <div className="divider" />
@@ -319,6 +396,8 @@ export default function PoliciesPage() {
                 <div className="kv"><span>打码</span><b>保留首尾字符，中间替换为 *</b></div>
                 <div className="kv"><span>删除</span><b>直接移除命中内容</b></div>
                 <div className="kv"><span>代号替换</span><b>同一密钥始终对应同一代号</b></div>
+                <div className="kv"><span>加密</span><b>对称加密后写入，可还原</b></div>
+                <div className="kv"><span>数字偏移</span><b>数值加偏移并取整</b></div>
                 <div className="kv"><span>可逆</span><b>映射表保存在任务目录，可还原</b></div>
                 <div className="divider" />
                 <p className="sub" style={{ fontSize: 12.5 }}>

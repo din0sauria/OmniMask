@@ -53,6 +53,32 @@ BUILTIN: list[dict] = [
         "custom_regex": [],
         "builtin": True,
     },
+    {
+        "id": "text-pii",
+        "name": "文本 PII 标准脱敏",
+        "description": "检测手机号 / 身份证 / 邮箱 / 银行卡 / 姓名 / 地址并打码。",
+        "mode": "mask",
+        "reversible": False,
+        "mask_keep": 2,
+        "min_confidence": 0.0,
+        "blocked_series": [],
+        "custom_regex": [],
+        "pii_types": [],
+        "builtin": True,
+    },
+    {
+        "id": "media",
+        "name": "媒体脱敏",
+        "description": "图像人脸/二维码打码、音频敏感片段静音。",
+        "mode": "mask",
+        "reversible": False,
+        "mask_keep": 4,
+        "min_confidence": 0.0,
+        "blocked_series": [],
+        "custom_regex": [],
+        "voice_change": "",
+        "builtin": True,
+    },
 ]
 
 

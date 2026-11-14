@@ -1,4 +1,4 @@
-export type MaskMode = "mask" | "delete" | "replace";
+export type MaskMode = "mask" | "delete" | "replace" | "encrypt" | "offset";
 export type FindingStatus = "pending" | "accepted" | "rejected";
 
 export type CustomRule = {
@@ -17,6 +17,11 @@ export type Policy = {
   min_confidence: number;
   blocked_series: string[];
   custom_regex: CustomRule[];
+  pii_types: string[];
+  crypto_key: string;
+  offset_amount: number;
+  offset_round: number;
+  voice_change: string;
   builtin: boolean;
 };
 
@@ -47,12 +52,13 @@ export type Task = {
     scanned?: number;
     skipped?: number;
     warnings?: string[];
-    mask?: { findings_applied: number; chars_removed: number; files_changed: number; mapping_items?: number };
+    mask?: { findings_applied: number; chars_removed: number; files_changed: number; media_changed?: number; mapping_items?: number };
     [key: string]: unknown;
   };
   source: string;
   source_path: string;
   root: string;
+  modality: string;
 };
 
 export type Finding = {

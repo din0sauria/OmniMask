@@ -87,7 +87,7 @@ export function review(
 }
 
 export function maskTask(taskId: string, acceptedOnly = false) {
-  return api<{ stats: { findings_applied: number; chars_removed: number; files_changed: number; mapping_items?: number }; summary: Summary; task: Task }>(
+  return api<{ stats: { findings_applied: number; chars_removed: number; files_changed: number; media_changed?: number; mapping_items?: number }; summary: Summary; task: Task }>(
     `/api/tasks/${taskId}/mask`, jsonInit("POST", { accepted_only: acceptedOnly }),
   );
 }

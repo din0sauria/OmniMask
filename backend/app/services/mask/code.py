@@ -1,5 +1,7 @@
+import base64
 import hashlib
 import json
+import re
 import tempfile
 import zipfile
 from pathlib import Path
@@ -8,12 +10,48 @@ from ...core.storage import now
 from ..ingest import read_text
 from ..report import build_report, render_markdown
 
+DEFAULT_KEY = "omnimask-local"
+_ENC_RE = re.compile(r"enc:([A-Za-z0-9_-]+)")
 
-def mask_value(value: str, mode: str, keep: int) -> str:
+
+def _keystream(key: str, n: int) -> bytes:
+    out, c = b"", 0
+    while len(out) < n:
+        out += hashlib.sha256(f"{key}:{c}".encode()).digest()
+        c += 1
+    return out[:n]
+
+
+def encrypt_value(value: str, key: str) -> str:
+    data = value.encode("utf-8")
+    ks = _keystream(key, len(data))
+    return base64.urlsafe_b64encode(bytes(a ^ b for a, b in zip(data, ks))).decode()
+
+
+def decrypt_value(token: str, key: str) -> str:
+    data = base64.urlsafe_b64decode(token.encode())
+    ks = _keystream(key, len(data))
+    return bytes(a ^ b for a, b in zip(data, ks)).decode("utf-8")
+
+
+def _offset(value: str, amount: int, round_to: int) -> str:
+    if not value.isdigit() or round_to < 1:
+        return mask_value(value, "mask", 4)
+    n = int(value) + amount
+    n = round(n / round_to) * round_to if round_to > 1 else n
+    return str(n)
+
+
+def mask_value(value: str, mode: str, keep: int, policy: dict | None = None) -> str:
+    policy = policy or {}
     if mode == "delete":
         return ""
     if mode == "replace":
         return value  # replaced via token in mask_text
+    if mode == "encrypt":
+        return "enc:" + encrypt_value(value, policy.get("crypto_key") or DEFAULT_KEY)
+    if mode == "offset":
+        return _offset(value, int(policy.get("offset_amount", 0)), int(policy.get("offset_round", 1)))
     if keep <= 0 or len(value) <= keep * 2 + 2:
         return "*" * min(max(len(value), 6), 16)
     return value[:keep] + "*" * min(len(value) - keep * 2, 24) + value[-keep:]
@@ -54,7 +92,7 @@ def _replacement(f: dict, policy: dict, tokens: dict[str, str]) -> str:
     mode = f.get("mode") or policy.get("mode", "mask")
     if mode == "replace":
         return tokens.get(f["value"]) or token_for(f["value"], 1, bool(policy.get("reversible")))
-    return mask_value(f["value"], mode, int(policy.get("mask_keep", 4)))
+    return mask_value(f["value"], mode, int(policy.get("mask_keep", 4)), policy)
 
 
 def mask_text(text: str, findings: list[dict], policy: dict, tokens: dict[str, str]) -> tuple[str, int, int]:
@@ -150,7 +188,8 @@ def preview_file(task: dict, fi: dict, findings: list[dict]) -> dict:
     return {"text": text, "masked": masked, "applied": applied}
 
 
-def _write_zip(task: dict, findings: list[dict], prefix: str, accepted_only: bool = False) -> Path:
+def _write_zip(task: dict, findings: list[dict], prefix: str, accepted_only: bool = False,
+               media: dict | None = None) -> Path:
     res = compute(task, findings, accepted_only)
     report = build_report(task, findings)
     policy = task.get("policy") or {}
@@ -163,8 +202,13 @@ def _write_zip(task: dict, findings: list[dict], prefix: str, accepted_only: boo
             p = Path(fi["abs"])
             if not p.exists():
                 continue
+            mdata = (media or {}).get(fi["id"])
             entry = res["outputs"].get(fi["id"])
-            if entry is not None:
+            if mdata is not None:
+                data, ext = mdata
+                name = Path(fi["path"]).with_suffix(ext).as_posix()
+                zf.writestr(f"{prefix}/{name}", data)
+            elif entry is not None:
                 text, enc = entry
                 zf.writestr(f"{prefix}/{fi['path']}", text.encode(enc))
             else:
@@ -174,8 +218,9 @@ def _write_zip(task: dict, findings: list[dict], prefix: str, accepted_only: boo
     return Path(tmp.name)
 
 
-def build_export_zip(task: dict, findings: list[dict], include_mapping: bool = False) -> Path:
-    path = _write_zip(task, findings, "masked")
+def build_export_zip(task: dict, findings: list[dict], include_mapping: bool = False,
+                     media: dict | None = None) -> Path:
+    path = _write_zip(task, findings, "masked", media=media)
     mapping = build_mapping(task, findings)
     if include_mapping and mapping is not None:
         # append mapping.json to the freshly written archive
@@ -186,6 +231,7 @@ def build_export_zip(task: dict, findings: list[dict], include_mapping: bool = F
 
 def build_restore_zip(task: dict, findings: list[dict], mapping: dict) -> Path:
     lookup = {item["token"]: item["value"] for item in mapping.get("items", [])}
+    key = (task.get("policy") or {}).get("crypto_key") or DEFAULT_KEY
     res = compute(task, findings)
     tmp = tempfile.NamedTemporaryFile(
         prefix=f"omnimask_{task['id']}_restored_", suffix=".zip", delete=False
@@ -201,6 +247,7 @@ def build_restore_zip(task: dict, findings: list[dict], mapping: dict) -> Path:
                 text, enc = entry
                 for token, value in lookup.items():
                     text = text.replace(token, value)
+                text = _ENC_RE.sub(lambda m: decrypt_value(m.group(1), key), text)
                 zf.writestr(f"restored/{fi['path']}", text.encode(enc))
             else:
                 zf.write(p, f"restored/{fi['path']}")

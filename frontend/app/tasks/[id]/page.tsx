@@ -20,6 +20,20 @@ type Busy = "" | "detect" | "review" | "mask" | "export" | "restore" | "mapping"
 
 const FLOW = ["路径", "检测", "审核", "脱敏", "导出"];
 
+function modeText(m?: string) {
+  return m === "mask" ? "打码" : m === "delete" ? "删除" : m === "replace" ? "代号替换"
+    : m === "encrypt" ? "加密" : m === "offset" ? "数字偏移" : "打码";
+}
+
+const MODALITY_TEXT: Record<string, string> = {
+  code: "代码密钥",
+  text: "文本 PII",
+  image: "图像",
+  audio: "音频",
+  video: "视频",
+  mixed: "混合",
+};
+
 function flowState(status: string, summary: Summary | null) {
   const masked = status === "masked" || status === "exported";
   const reviewStage = status !== "created";
@@ -137,7 +151,9 @@ export default function TaskPage() {
   const doMask = () => act("mask", async () => {
     const res = await maskTask(id);
     setSummary(res.summary);
-    setMsg(`脱敏完成：处理 ${res.stats.findings_applied} 处，涉及 ${res.stats.files_changed} 个文件。导出时生成文件，源目录保持不变。`);
+    const applied = res.stats.findings_applied + (res.stats.media_changed || 0);
+    const files = res.stats.files_changed + (res.stats.media_changed || 0);
+    setMsg(`脱敏完成：处理 ${applied} 处，涉及 ${files} 个文件。导出时生成文件，源目录保持不变。`);
   });
 
   const doExport = () => act("export", async () => {
@@ -179,6 +195,8 @@ export default function TaskPage() {
   const shown = findings.filter((f) => filter === "all" || f.status === filter);
   const reversible = !!task.policy?.reversible;
   const maskedDone = task.status === "masked" || task.status === "exported";
+  const appliedCount = (task.stats.mask?.findings_applied ?? 0) + (task.stats.mask?.media_changed ?? 0);
+  const changedFiles = (task.stats.mask?.files_changed ?? 0) + (task.stats.mask?.media_changed ?? 0);
 
   return (
     <>
@@ -190,7 +208,7 @@ export default function TaskPage() {
 
       <div className="task-head">
         <div style={{ minWidth: 0 }}>
-          <div className="eyebrow">task · code secrets</div>
+          <div className="eyebrow">task · {MODALITY_TEXT[task.modality] || "多模态"}</div>
           <div className="task-title">
             <h1>{task.name}</h1>
             <StatusPill status={task.status} />
@@ -240,7 +258,7 @@ export default function TaskPage() {
         <div className="tile"><span>命中总数</span><b>{summary.total}</b><span className="tile-sub">待确认 {summary.pending}</span></div>
         <div className="tile red"><span>高风险</span><b>{summary.high}</b><span className="tile-sub">中 {summary.medium} · 低 {summary.low}</span></div>
         <div className="tile"><span>扫描文件</span><b>{task.files.filter((f) => f.is_text).length}</b><span className="tile-sub">共 {task.files.length} 个</span></div>
-        <div className="tile lime"><span>已应用</span><b>{task.stats.mask?.findings_applied ?? 0}</b><span className="tile-sub">{task.stats.mask ? `${task.stats.mask.files_changed} 个文件` : "尚未脱敏"}</span></div>
+        <div className="tile lime"><span>已应用</span><b>{appliedCount}</b><span className="tile-sub">{task.stats.mask ? `${changedFiles} 个文件` : "尚未脱敏"}</span></div>
       </div>
 
       {error && <div className="notice error" style={{ marginBottom: 14 }}><AlertIcon />{error}</div>}
@@ -249,7 +267,7 @@ export default function TaskPage() {
         <div className="banner">
           <ShieldIcon size={17} />
           <span>
-            脱敏方案已确认（{task.stats.mask?.findings_applied ?? 0} 处）。导出时从源目录即时生成文件，源文件不会被修改。
+            脱敏方案已确认（{appliedCount} 处）。导出时从源目录即时生成文件，源文件不会被修改。
             {reversible && " 当前策略可逆，映射表由任务结果实时生成。"}
           </span>
           {reversible && (
@@ -326,7 +344,7 @@ export default function TaskPage() {
               <div className={`pane tabbed ${tab === "masked" ? "active" : ""}`}>
                 <div className="pane-head">
                   <span>masked preview</span>
-                  <span className="mode">{task.policy?.mode === "mask" ? "打码" : task.policy?.mode === "delete" ? "删除" : "代号替换"} · {preview.applied} 处</span>
+                  <span className="mode">{modeText(task.policy?.mode)} · {preview.applied} 处</span>
                 </div>
                 <div className="code-scroll">
                   <pre className="code masked">{preview.masked}</pre>
@@ -389,6 +407,8 @@ export default function TaskPage() {
                     <option value="mask">打码</option>
                     <option value="delete">删除</option>
                     <option value="replace">代号替换</option>
+                    <option value="encrypt">加密</option>
+                    <option value="offset">数字偏移</option>
                   </select>
                 </div>
               </div>
