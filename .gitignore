@@ -1,0 +1,32 @@
+# runtime task metadata (root only; keyleak/data/ 是检测规则与词表，需入库)
+/data/
+/models/
+
+*.zip
+.env
+.env.*
+
+__pycache__/
+*.pyc
+*.py[oc]
+backend/.venv/
+backend/.pytest_cache/
+
+# 依赖与构建产物
+node_modules/
+frontend/.next/
+frontend/next-env.d.ts
+
+# keyleak 运行期输出（含已检出密钥的结果文件与含样例密钥的测试样本）
+keyleak/states/
+keyleak/result/
+keyleak/data/complex_keys_results_gpu_1.json
+keyleak/exsample_files/
+
+# 模型权重（二进制，非检测所需）
+*.pth
+*.pth.tar
+*.pt
+*.ckpt
+*.onnx
+*.safetensors

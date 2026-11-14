@@ -1,0 +1,26 @@
+[project]
+name = "omnimask-backend"
+version = "0.1.0"
+description = "OmniMask backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "wordninja>=2.0.0",
+    "jellyfish>=1.1.0",
+    "PyYAML>=6.0",
+    "javalang>=0.13.0",
+    "xmltodict>=0.13",
+    "tqdm>=4.66",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
