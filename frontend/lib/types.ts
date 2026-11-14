@@ -82,6 +82,11 @@ export type Finding = {
   status: FindingStatus;
   mode: MaskMode | null;
   type_label: string;
+  bbox?: [number, number, number, number];
+  media?: string;
+  start?: number;
+  end?: number;
+  frame_ts?: number;
 };
 
 export type Summary = {
@@ -117,6 +122,11 @@ export type Preview = {
   applied: number;
   findings: Finding[];
   binary: boolean;
+  media?: string;
+  image_url?: string;
+  audio_url?: string;
+  video_url?: string;
+  masked_url?: string;
 };
 
 export type FsEntry = {

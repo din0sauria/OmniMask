@@ -69,7 +69,7 @@ BUILTIN: list[dict] = [
     {
         "id": "media",
         "name": "媒体脱敏",
-        "description": "图像人脸/二维码打码、音频敏感片段静音。",
+        "description": "图像人脸/二维码/证件/车牌/屏幕打码、音频敏感片段静音。",
         "mode": "mask",
         "reversible": False,
         "mask_keep": 4,
@@ -77,6 +77,7 @@ BUILTIN: list[dict] = [
         "blocked_series": [],
         "custom_regex": [],
         "voice_change": "",
+        "use_model": True,
         "builtin": True,
     },
 ]

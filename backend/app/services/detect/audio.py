@@ -2,7 +2,7 @@
 import functools
 from pathlib import Path
 
-from ...core.config import MAX_FILE_BYTES
+from ...core.config import MAX_MEDIA_BYTES
 from .text import scan_pii
 
 
@@ -52,7 +52,7 @@ def detect_audio_files(files: list[dict], policy: dict) -> dict:
         p = Path(f["abs"])
         if not p.exists():
             continue
-        if p.stat().st_size > MAX_FILE_BYTES:
+        if p.stat().st_size > MAX_MEDIA_BYTES:
             skipped += 1
             warnings.append(f"文件过大已跳过：{f['path']}")
             continue

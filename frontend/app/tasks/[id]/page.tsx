@@ -7,7 +7,7 @@ import {
   detectTask, download, exportUrl, getPolicies, getPreview, getTask, mappingUrl, maskTask,
   restoreDownloadUrl, restoreTask, review,
 } from "@/lib/api";
-import type { Finding, Policy, Preview, Summary, Task } from "@/lib/types";
+import type { Finding, Policy, Preview, Summary, Task, TaskFile } from "@/lib/types";
 import {
   Empty, FindingStatusPill, formatBytes, formatTime, RiskPill, StatusPill,
 } from "@/components/ui";
@@ -23,6 +23,26 @@ const FLOW = ["路径", "检测", "审核", "脱敏", "导出"];
 function modeText(m?: string) {
   return m === "mask" ? "打码" : m === "delete" ? "删除" : m === "replace" ? "代号替换"
     : m === "encrypt" ? "加密" : m === "offset" ? "数字偏移" : "打码";
+}
+
+function findingPos(f: Finding): string {
+  if (f.start != null && f.end != null) return `${f.start.toFixed(1)}–${f.end.toFixed(1)}s`;
+  if (f.bbox && f.bbox.length === 4) {
+    const area = `区域 ${f.bbox.map((n) => Math.round(n)).join("×")}`;
+    return f.frame_ts != null ? `${area} · ${f.frame_ts.toFixed(1)}s` : area;
+  }
+  return `L${f.line_start}${f.line_end !== f.line_start ? `-${f.line_end}` : ""}`;
+}
+
+function kindLabel(f: TaskFile): string {
+  if (f.is_text) return `${f.lines} 行`;
+  const e = (f.path.split(".").pop() || "").toLowerCase();
+  const map: Record<string, string> = {
+    jpg: "图像", jpeg: "图像", png: "图像", bmp: "图像", webp: "图像", tif: "图像", tiff: "图像",
+    mp3: "音频", wav: "音频", m4a: "音频", flac: "音频", ogg: "音频", aac: "音频", wma: "音频",
+    mp4: "视频", avi: "视频", mov: "视频", mkv: "视频", wmv: "视频", flv: "视频", webm: "视频",
+  };
+  return map[e] || "二进制";
 }
 
 const MODALITY_TEXT: Record<string, string> = {
@@ -257,7 +277,7 @@ export default function TaskPage() {
       <div className="tiles">
         <div className="tile"><span>命中总数</span><b>{summary.total}</b><span className="tile-sub">待确认 {summary.pending}</span></div>
         <div className="tile red"><span>高风险</span><b>{summary.high}</b><span className="tile-sub">中 {summary.medium} · 低 {summary.low}</span></div>
-        <div className="tile"><span>扫描文件</span><b>{task.files.filter((f) => f.is_text).length}</b><span className="tile-sub">共 {task.files.length} 个</span></div>
+        <div className="tile"><span>扫描文件</span><b>{task.stats.scanned ?? task.files.length}</b><span className="tile-sub">共 {task.files.length} 个</span></div>
         <div className="tile lime"><span>已应用</span><b>{appliedCount}</b><span className="tile-sub">{task.stats.mask ? `${changedFiles} 个文件` : "尚未脱敏"}</span></div>
       </div>
 
@@ -302,7 +322,7 @@ export default function TaskPage() {
               >
                 <div className="rail-file"><FileIcon size={13} /><span>{f.path}</span></div>
                 <div className="rail-meta">
-                  <span>{f.is_text ? `${f.lines} 行` : "二进制"}</span>
+                  <span>{kindLabel(f)}</span>
                   {f.findings > 0 && <span className="hit">{f.findings} 命中</span>}
                 </div>
               </button>
@@ -320,14 +340,69 @@ export default function TaskPage() {
               <span className="badge" style={{ marginLeft: 4 }}>{formatBytes(selectedFile.size)}</span>
             )}
             <div className="tabs">
-              <button className={`tab ${tab === "original" ? "active" : ""}`} onClick={() => setTab("original")}>原始代码</button>
+              <button className={`tab ${tab === "original" ? "active" : ""}`} onClick={() => setTab("original")}>{preview?.media === "image" ? "原始图像" : preview?.media === "audio" ? "原始音频" : preview?.media === "video" ? "原始视频" : "原始代码"}</button>
               <button className={`tab ${tab === "masked" ? "active" : ""}`} onClick={() => setTab("masked")}>脱敏预览</button>
             </div>
           </div>
           {!selectedFile ? (
             <Empty title="选择一个文件" hint="左侧文件列表中选择要查看的源码" />
+          ) : preview?.media === "image" ? (
+            <div className="compare">
+              <div className={`pane tabbed ${tab === "original" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>original</span>
+                  <span className="mode">{findings.length} findings</span>
+                </div>
+                <ImagePane src={preview.image_url!} findings={findings} activeId={active} onPick={pick} showBoxes />
+              </div>
+              <div className={`pane tabbed ${tab === "masked" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>masked preview</span>
+                  <span className="mode">{modeText(task.policy?.mode)}</span>
+                </div>
+                <ImagePane src={preview.masked_url!} findings={findings} activeId={active} onPick={pick} />
+              </div>
+            </div>
+          ) : preview?.media === "audio" ? (
+            <div className="compare">
+              <div className={`pane tabbed ${tab === "original" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>original</span>
+                  <span className="mode">{findings.length} findings</span>
+                </div>
+                <div className="media-pane"><audio controls src={preview.audio_url!} /></div>
+              </div>
+              <div className={`pane tabbed ${tab === "masked" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>masked preview</span>
+                  <span className="mode">{modeText(task.policy?.mode)}</span>
+                </div>
+                <div className="media-pane"><audio controls src={preview.masked_url!} /></div>
+              </div>
+            </div>
+          ) : preview?.media === "video" ? (
+            <div className="compare">
+              <div className={`pane tabbed ${tab === "original" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>original</span>
+                  <span className="mode">{findings.length} findings</span>
+                </div>
+                <div className="media-pane"><video controls src={preview.video_url!} /></div>
+              </div>
+              <div className={`pane tabbed ${tab === "masked" ? "active" : ""}`}>
+                <div className="pane-head">
+                  <span>masked preview</span>
+                  <span className="mode">{modeText(task.policy?.mode)}</span>
+                </div>
+                <div className="media-pane media-download">
+                  <Empty icon={<DownloadIcon size={26} />} title="脱敏视频在导出时生成"
+                    hint="点击下载预览当前脱敏结果，或导出 ZIP 查看完整脱敏文件" />
+                  <a className="btn" href={preview.masked_url!} download>下载脱敏视频</a>
+                </div>
+              </div>
+            </div>
           ) : preview?.binary ? (
-            <Empty icon={<FileIcon size={26} />} title="二进制文件" hint="该文件不会参与代码检测，也不提供预览" />
+            <Empty icon={<FileIcon size={26} />} title="二进制文件" hint="该文件类型不提供文本预览，检测结果见右侧列表" />
           ) : preview ? (
             <div className="compare">
               <div className={`pane tabbed ${tab === "original" ? "active" : ""}`}>
@@ -389,9 +464,13 @@ export default function TaskPage() {
                   <FindingStatusPill status={f.status} />
                   <span className="finding-rule">{f.rule_name}</span>
                 </div>
-                <div className="finding-value" title={f.value}>{f.value}</div>
+                {f.value ? (
+                  <div className="finding-value" title={f.value}>{f.value}</div>
+                ) : (
+                  <div className="finding-value empty">无文本内容（仅区域处理）</div>
+                )}
                 <div className="finding-meta">
-                  <span>L{f.line_start}{f.line_end !== f.line_start ? `-${f.line_end}` : ""}</span>
+                  <span>{findingPos(f)}</span>
                   <span>置信度 {Math.round(f.confidence * 100)}%</span>
                   <span>{f.series}</span>
                   {f.mode && <span>方式 {f.mode}</span>}
@@ -446,4 +525,43 @@ function renderHighlighted(
   }
   if (pos < text.length) out.push(<span key={`t${n++}`}>{text.slice(pos)}</span>);
   return out;
+}
+
+function ImagePane({ src, findings, activeId, onPick, showBoxes = false }: {
+  src: string; findings: Finding[]; activeId: string; onPick: (id: string) => void; showBoxes?: boolean;
+}) {
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const boxes = showBoxes ? findings.filter((f) => f.bbox && f.bbox.length === 4) : [];
+  return (
+    <div className="img-pane">
+      <div className="img-box">
+        <img
+          src={src}
+          alt="预览"
+          onLoad={(e) => {
+            const el = e.currentTarget;
+            if (el.naturalWidth) setDims({ w: el.naturalWidth, h: el.naturalHeight });
+          }}
+        />
+        {dims && boxes.map((f) => {
+          const [x, y, w, h] = f.bbox!;
+          return (
+            <div
+              key={f.id}
+              data-fid={f.id}
+              onClick={(e) => { e.stopPropagation(); onPick(f.id); }}
+              className={`bbox ${f.id === activeId ? "active" : ""} ${f.status === "rejected" ? "rejected" : ""}`}
+              style={{
+                left: `${(x / dims.w) * 100}%`,
+                top: `${(y / dims.h) * 100}%`,
+                width: `${(w / dims.w) * 100}%`,
+                height: `${(h / dims.h) * 100}%`,
+              }}
+              title={`${f.type_label} · ${Math.round(f.confidence * 100)}%`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }

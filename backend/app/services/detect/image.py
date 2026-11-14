@@ -2,7 +2,7 @@
 import functools
 from pathlib import Path
 
-from ...core.config import MAX_FILE_BYTES
+from ...core.config import MAX_MEDIA_BYTES
 from ..models import image_yolo
 from .text import scan_pii
 
@@ -24,17 +24,29 @@ def _ocr_engine():
         return None
 
 
-def _ocr(img) -> str:
+def _ocr_lines(img) -> list[tuple[str, list[int]]]:
+    """OCR each text line together with its bounding box."""
     eng = _ocr_engine()
     if eng is None:
-        return ""
+        return []
     try:
         result, _ = eng(img)
     except Exception:
-        return ""
+        return []
     if not result:
-        return ""
-    return "\n".join(line[1] for line in result)
+        return []
+    out = []
+    for line in result:
+        try:
+            pts, text = line[0], line[1]
+            if not text:
+                continue
+            xs = [int(p[0]) for p in pts]
+            ys = [int(p[1]) for p in pts]
+            out.append((text, [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)]))
+        except (IndexError, ValueError, TypeError):
+            continue
+    return out
 
 
 def _mh(rule: str, label: str, bbox: list[int], conf: float, value: str = "") -> dict:
@@ -72,7 +84,6 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     img = cv2.imread(str(path))
     if img is None:
         return [], [f"无法读取图像：{path.name}"]
-    h, w = img.shape[:2]
     findings: list[dict] = []
 
     try:
@@ -93,11 +104,10 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     except Exception:
         pass
 
-    text = _ocr(img)
-    if text:
+    for text, box in _ocr_lines(img):
         for hit in scan_pii(text, policy):
             f = dict(hit)
-            f["bbox"] = [0, 0, w, h]
+            f["bbox"] = box
             f["media"] = "image"
             f["type_label"] = f"图中{hit['type_label']}"
             findings.append(f)
@@ -131,7 +141,7 @@ def detect_image_files(files: list[dict], policy: dict) -> dict:
         p = Path(f["abs"])
         if not p.exists():
             continue
-        if p.stat().st_size > MAX_FILE_BYTES:
+        if p.stat().st_size > MAX_MEDIA_BYTES:
             skipped += 1
             warnings.append(f"文件过大已跳过：{f['path']}")
             continue

@@ -1,5 +1,3 @@
-param([switch]$Media)
-
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $be = Join-Path $root "backend"
@@ -11,7 +9,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host "未找�
 
 Write-Host "[1/3] 同步后端依赖 ..." -ForegroundColor Cyan
 Push-Location $be
-if ($Media) { & $uv.Source sync --group media } else { & $uv.Source sync }
+& $uv.Source sync --group media
 if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "后端依赖同步失败" -ForegroundColor Red; exit 1 }
 Pop-Location
 
@@ -35,4 +33,4 @@ Start-Process "http://localhost:3000"
 Write-Host ""
 Write-Host "后端  http://127.0.0.1:8000  (PID $($beProc.Id))" -ForegroundColor Green
 Write-Host "前端  http://localhost:3000   (PID $($feProc.Id))" -ForegroundColor Green
-Write-Host "两个独立窗口保持运行，关闭各自窗口即可停止。需要媒体模态时用: .\start.ps1 -Media" -ForegroundColor DarkGray
+Write-Host "两个独立窗口保持运行，关闭各自窗口即可停止。" -ForegroundColor DarkGray

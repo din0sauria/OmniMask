@@ -1,9 +1,11 @@
 """Media masking: blur image regions, mute / pitch-shift audio, process video."""
 import io
+import subprocess
 import tempfile
 from pathlib import Path
 
 from .code import eligible
+from ..detect.video import _open_capture
 
 
 def _cv():
@@ -120,12 +122,49 @@ def mask_audio_bytes(path: Path, findings: list[dict], policy: dict) -> bytes | 
     return buf.getvalue()
 
 
+def _extract_audio_track(video: Path) -> Path | None:
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video), "-vn", "-ac", "2", "-ar", "48000", tmp.name],
+            capture_output=True, check=True, timeout=300,
+        )
+        return Path(tmp.name)
+    except Exception:
+        Path(tmp.name).unlink(missing_ok=True)
+        return None
+
+
+def _mux_audio(video: Path, audio: bytes) -> bytes | None:
+    awav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    awav.close()
+    Path(awav.name).write_bytes(audio)
+    out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    out.close()
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video), "-i", awav.name,
+             "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0",
+             "-shortest", out.name],
+            capture_output=True, check=True, timeout=600,
+        )
+    except Exception:
+        Path(awav.name).unlink(missing_ok=True)
+        Path(out.name).unlink(missing_ok=True)
+        return None
+    data = Path(out.name).read_bytes()
+    Path(awav.name).unlink(missing_ok=True)
+    Path(out.name).unlink(missing_ok=True)
+    return data
+
+
 def mask_video_bytes(path: Path, findings: list[dict], policy: dict) -> bytes | None:
     cv2 = _cv()
     if cv2 is None:
         return None
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
+    cap, src = _open_capture(cv2, path)
+    if cap is None:
         return None
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -153,7 +192,23 @@ def mask_video_bytes(path: Path, findings: list[dict], policy: dict) -> bytes | 
         idx += 1
     cap.release()
     out.release()
-    return Path(tmp.name).read_bytes()
+    if src is not None:
+        src.unlink(missing_ok=True)
+    video_bytes = Path(tmp.name).read_bytes()
+
+    # keep the (muted / voice-changed) audio track instead of dropping it
+    audio_track = _extract_audio_track(path)
+    if audio_track is not None:
+        af = [f for f in _accepted(findings) if "start" in f and f.get("end") is not None]
+        audio_bytes = mask_audio_bytes(audio_track, af, policy)
+        audio_track.unlink(missing_ok=True)
+        if audio_bytes is not None:
+            muxed = _mux_audio(Path(tmp.name), audio_bytes)
+            if muxed is not None:
+                Path(tmp.name).unlink(missing_ok=True)
+                return muxed
+    Path(tmp.name).unlink(missing_ok=True)
+    return video_bytes
 
 
 def compute_media(task: dict, findings: list[dict], accepted_only: bool = False) -> dict:

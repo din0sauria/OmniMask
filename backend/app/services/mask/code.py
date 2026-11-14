@@ -131,7 +131,7 @@ def compute(task: dict, findings: list[dict], accepted_only: bool = False) -> di
         for fi in task["files"]:
             hits = by_file.get(fi["id"], [])
             fi["findings"] = len(hits)
-            if not hits:
+            if not hits or not fi.get("is_text"):
                 continue
             p = Path(fi["abs"])
             if not p.exists():

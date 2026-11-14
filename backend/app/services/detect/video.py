@@ -3,9 +3,40 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ...core.config import MAX_FILE_BYTES
+from ...core.config import MAX_MEDIA_BYTES
 from .audio import detect_audio
 from .image import _cv, detect_image
+
+
+def _to_mjpeg(video: Path) -> Path | None:
+    tmp = tempfile.NamedTemporaryFile(suffix=".avi", delete=False)
+    tmp.close()
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video), "-an", "-c:v", "mjpeg", "-q:v", "3", tmp.name],
+            capture_output=True, check=True, timeout=900,
+        )
+        return Path(tmp.name)
+    except Exception:
+        Path(tmp.name).unlink(missing_ok=True)
+        return None
+
+
+def _open_capture(cv2, path: Path):
+    """Open a video with cv2, transcoding via ffmpeg when the codec is unsupported."""
+    cap = cv2.VideoCapture(str(path))
+    if cap.isOpened():
+        return cap, None
+    cap.release()
+    mj = _to_mjpeg(path)
+    if mj is None:
+        return None, None
+    cap = cv2.VideoCapture(str(mj))
+    if not cap.isOpened():
+        cap.release()
+        mj.unlink(missing_ok=True)
+        return None, None
+    return cap, mj
 
 
 def _extract_audio(video: Path) -> Path | None:
@@ -27,8 +58,8 @@ def detect_video(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     cv2 = _cv()
     if cv2 is not None:
-        cap = cv2.VideoCapture(str(path))
-        if cap.isOpened():
+        cap, tmp = _open_capture(cv2, path)
+        if cap is not None:
             fps = cap.get(cv2.CAP_PROP_FPS) or 25
             sample_every = max(int(fps), 1)
             idx = 0
@@ -37,17 +68,21 @@ def detect_video(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
                 if not ok:
                     break
                 if idx % sample_every == 0:
-                    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                    tmp.close()
-                    cv2.imwrite(tmp.name, frame)
-                    hits, _ = detect_image(Path(tmp.name), policy)
+                    ftmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                    ftmp.close()
+                    cv2.imwrite(ftmp.name, frame)
+                    hits, _ = detect_image(Path(ftmp.name), policy)
                     for h in hits:
                         h["media"] = "video"
                         h["frame_ts"] = round(idx / fps, 2)
                         findings.append(h)
-                    Path(tmp.name).unlink(missing_ok=True)
+                    Path(ftmp.name).unlink(missing_ok=True)
                 idx += 1
             cap.release()
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
+        else:
+            warnings.append("视频抽帧需要 opencv 与 ffmpeg：cd backend && uv sync --group media")
     else:
         warnings.append("视频抽帧需要 opencv：cd backend && uv sync --group media")
 
@@ -71,7 +106,7 @@ def detect_video_files(files: list[dict], policy: dict) -> dict:
         p = Path(f["abs"])
         if not p.exists():
             continue
-        if p.stat().st_size > MAX_FILE_BYTES:
+        if p.stat().st_size > MAX_MEDIA_BYTES:
             skipped += 1
             warnings.append(f"文件过大已跳过：{f['path']}")
             continue

@@ -1,12 +1,13 @@
+import mimetypes
 import os
 import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.background import BackgroundTask
 
-from ..core.config import MAX_FILES, MAX_FILE_BYTES, SKIP_DIRS, TASKS_DIR
+from ..core.config import MAX_FILES, SKIP_DIRS, TASKS_DIR
 from ..core.storage import (
     load_findings, load_task, new_id, now, read_json, save_findings, save_task, task_dir,
 )
@@ -20,8 +21,8 @@ from ..services.ingest import count_lines, read_text
 from ..services.mask.code import (
     build_export_zip, build_mapping, build_restore_zip, compute, preview_file, restore_info,
 )
-from ..services.mask.media import compute_media
-from ..services.media import label_of, partition
+from ..services.mask.media import compute_media, mask_audio_bytes, mask_image_bytes, mask_video_bytes
+from ..services.media import kind_of, label_of, partition
 from ..services.policy import get_policy
 from ..services.report import build_report, summarize
 
@@ -76,8 +77,6 @@ def _new_file(rel: str, abs_path: Path) -> dict:
 def _collect(sp: Path, warnings: list[str]) -> list[dict]:
     infos: list[dict] = []
     if sp.is_file():
-        if sp.stat().st_size > MAX_FILE_BYTES:
-            raise HTTPException(400, f"文件超过 {MAX_FILE_BYTES // (1024 * 1024)} MB 限制")
         infos.append(_new_file(sp.name, sp))
         return infos
 
@@ -89,9 +88,6 @@ def _collect(sp: Path, warnings: list[str]) -> list[dict]:
                 return infos
             p = Path(root) / name
             try:
-                if p.stat().st_size > MAX_FILE_BYTES:
-                    warnings.append(f"{p.relative_to(sp).as_posix()} 超过大小限制，已跳过")
-                    continue
                 infos.append(_new_file(p.relative_to(sp).as_posix(), p))
             except OSError:
                 continue
@@ -283,11 +279,62 @@ def file_preview(task_id: str, file_id: str):
         raise HTTPException(404, "源文件不存在或已被移动")
     findings = [f for f in load_findings(task_id) if f["file_id"] == file_id]
     if not fi["is_text"]:
+        kind = kind_of(fi["path"])
+        if kind in ("image", "audio", "video"):
+            base = f"/api/tasks/{task_id}/files/{file_id}/{kind}"
+            return {"code": 0, "msg": "ok", "data": {"file": fi, "original": "", "masked": "",
+                                                      "applied": 0, "findings": findings, "binary": False,
+                                                      "media": kind, f"{kind}_url": base,
+                                                      "masked_url": base + "?masked=1"}}
         return {"code": 0, "msg": "ok", "data": {"file": fi, "original": "", "masked": "",
                                                   "applied": 0, "findings": findings, "binary": True}}
     pv = preview_file(task, fi, findings)
     return {"code": 0, "msg": "ok", "data": {"file": fi, "original": pv["text"], "masked": pv["masked"],
                                              "applied": pv["applied"], "findings": findings, "binary": False}}
+
+
+def _source_file(task_id: str, file_id: str) -> FileResponse:
+    task = _get(task_id)
+    fi = next((f for f in task["files"] if f["id"] == file_id), None)
+    if not fi:
+        raise HTTPException(404, "文件不存在")
+    p = Path(fi["abs"])
+    if not p.exists():
+        raise HTTPException(404, "源文件不存在或已被移动")
+    return FileResponse(p)
+
+
+def _masked_media(task_id: str, file_id: str) -> tuple[bytes, str] | None:
+    task = _get(task_id)
+    fi = next((f for f in task["files"] if f["id"] == file_id), None)
+    if not fi:
+        raise HTTPException(404, "文件不存在")
+    p = Path(fi["abs"])
+    if not p.exists():
+        raise HTTPException(404, "源文件不存在或已被移动")
+    findings = [f for f in load_findings(task_id) if f["file_id"] == file_id]
+    policy = task.get("policy") or {}
+    kind = kind_of(fi["path"])
+    if kind == "image":
+        data = mask_image_bytes(p, findings, policy)
+        return (data, mimetypes.guess_type(fi["name"])[0] or "image/png") if data is not None else None
+    if kind == "audio":
+        data = mask_audio_bytes(p, findings, policy)
+        return (data, "audio/wav") if data is not None else None
+    if kind == "video":
+        data = mask_video_bytes(p, findings, policy)
+        return (data, "video/mp4") if data is not None else None
+    return None
+
+
+@router.get("/{task_id}/files/{file_id}/image")
+@router.get("/{task_id}/files/{file_id}/audio")
+@router.get("/{task_id}/files/{file_id}/video")
+def file_media(task_id: str, file_id: str, masked: bool = False):
+    if not masked:
+        return _source_file(task_id, file_id)
+    mm = _masked_media(task_id, file_id)
+    return Response(content=mm[0], media_type=mm[1]) if mm else _source_file(task_id, file_id)
 
 
 @router.get("/{task_id}/files/{file_id}/download")

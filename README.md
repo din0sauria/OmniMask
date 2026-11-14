@@ -43,7 +43,7 @@ OmniMask/
 
 ```sh
 cd backend
-uv sync
+uv sync --group media
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -81,8 +81,8 @@ npm run start
 - 规则：`keyleak/data/regex/merged_rules.json`（1124 条），按文件原文逐条正则匹配。
 - 过滤：复用 keyleak 的 `key_value_filter_single`、`combine_substr`、`check_multi_reason`、`filter_strings`（多语言字符串提取），并缓存其反复加载的词表。
 - 输出：文件、起止行列、命中内容、规则名、类型、置信度、风险等级。
-- 目录导入会跳过 `.git`、`node_modules`、`__pycache__`、`.venv` 等目录；最多 500 个文件，单个文件上限 5 MB。
-- 检测阶段跳过二进制文件与大于 1 MB 的文件。
+- 目录导入会跳过 `.git`、`node_modules`、`__pycache__`、`.venv` 等目录；最多 500 个文件，导入不限文件大小。
+- 代码/文本检测跳过二进制文件与大于 1 MB 的文本；图像/音频/视频检测上限 500 MB。
 - LLM 辅助检测（`keyleak/llmdetect.py`）未启用，避免引入 Qwen 与 GPU 依赖。
 
 ## 模态与可选依赖
@@ -92,16 +92,9 @@ npm run start
 - **文本 PII**：内置正则（手机/身份证/邮箱/银行卡含校验、姓名/地址轻量规则）开箱即用；可选 HaS_Text NER 增强。
 - **图像**：人脸（OpenCV Haar）、二维码（OpenCV）、OCR（rapidocr）→ 文本 PII；可选 HaS_Image YOLO 分割增强（21 类）。需安装媒体依赖。
 - **音频**：ASR（faster-whisper，首次自动下载模型）→ 文本 PII → 静音；变声（pitch / robot）。
-- **视频**：抽帧走图像检测 + 音轨走音频检测（需 ffmpeg）。
+- **视频**：抽帧走图像检测 + 音轨走音频检测（需 ffmpeg）；脱敏输出保留音轨，敏感片段静音/变声。
 
-安装可选媒体依赖：
-
-```sh
-cd backend
-uv sync --group media
-```
-
-未安装时这些模态会优雅降级：检测返回提示信息，代码与文本 PII 不受影响。
+媒体依赖（opencv / rapidocr / faster-whisper / soundfile / ultralytics / llama-cpp）已作为标准依赖随 `uv sync --group media` 一并安装，一键脚本 `start.ps1` 也会自动装齐；缺失时各模态会优雅降级，代码与文本 PII 不受影响。
 
 **本地模型增强**（可选）：模型权重统一放 `models/`（已 git 忽略），用 `downmodels.ps1`（modelscope）下载到
 `models/HaS_Text_0209_0.6B_Q8/has_text_model.gguf` 与 `models/HaS_Image_0209_FP32/sensitive_seg_best.pt`。

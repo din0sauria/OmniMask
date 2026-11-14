@@ -168,7 +168,7 @@ export default function HomePage() {
                 </div>
                 <div className="path-hint">
                   <FolderIcon size={13} />
-                  <span>点击「浏览…」选择本机文件或目录；扫描上限 1 MB/文件，二进制与超限文件自动跳过</span>
+                  <span>点击「浏览…」选择本机文件或目录；最多导入 500 个文件，文本扫描上限 1 MB、媒体 500 MB，超限自动跳过</span>
                 </div>
               </div>
 
