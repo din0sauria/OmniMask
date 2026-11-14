@@ -22,6 +22,7 @@ export type Policy = {
   offset_amount: number;
   offset_round: number;
   voice_change: string;
+  use_model: boolean;
   builtin: boolean;
 };
 

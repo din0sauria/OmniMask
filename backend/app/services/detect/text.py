@@ -1,9 +1,11 @@
 """Text PII detection: regex rules (phone / id / email / bank card) + light NER."""
+import json
 import re
 from pathlib import Path
 
 from ...core.config import MAX_SCAN_BYTES
 from ..ingest import read_text
+from ..models import text_llm
 from .code import _is_text_file
 
 _PHONE = re.compile(r"(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)")
@@ -146,6 +148,71 @@ def _make(content: str, value: str, start: int, end: int, rule: str, label: str,
     }
 
 
+_TYPES = {
+    "phone": "电话号码",
+    "id_card": "身份证号",
+    "email": "邮箱地址",
+    "bank_card": "银行卡号",
+    "name": "人名",
+    "address": "地址",
+}
+
+
+def scan_pii_model(content: str, policy: dict) -> list[dict]:
+    """HaS_Text GGUF NER：返回实体并在原文中定位；无模型/未启用时返回空。"""
+    if not policy.get("use_model"):
+        return []
+    llm = text_llm()
+    if llm is None:
+        return []
+    enabled = set(policy.get("pii_types") or [])
+    types = [t for k, t in _TYPES.items() if not enabled or k in enabled]
+    if not types:
+        types = list(_TYPES.values())
+    prompt = (
+        "Recognize the following entity types in the text.\n"
+        f"Specified types:{json.dumps(types, ensure_ascii=False)}\n"
+        f"<text>{content}</text>"
+    )
+    try:
+        resp = llm.create_chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=2048,
+        )
+        raw = resp["choices"][0]["message"]["content"]
+    except Exception:
+        return []
+    m = re.search(r"\{.*\}", raw, re.S)
+    if not m:
+        return []
+    try:
+        data = json.loads(m.group(0))
+    except Exception:
+        return []
+    if not isinstance(data, dict):
+        return []
+    rev = {t: k for k, t in _TYPES.items()}
+    hits: list[dict] = []
+    taken: set[tuple[int, int]] = set()
+    for type_name, values in data.items():
+        if not isinstance(values, list):
+            continue
+        rule = rev.get(type_name, "entity")
+        for v in values:
+            if not isinstance(v, str) or not v:
+                continue
+            s = content.find(v)
+            if s < 0:
+                continue
+            e = s + len(v)
+            if any(not (e <= a or s >= b) for a, b in taken):
+                continue
+            taken.add((s, e))
+            hits.append(_make(content, v, s, e, rule, type_name, 0.8))
+    return hits
+
+
 def detect_text_files(files: list[dict], policy: dict) -> dict:
     findings: list[dict] = []
     scanned = skipped = 0
@@ -167,7 +234,14 @@ def detect_text_files(files: list[dict], policy: dict) -> dict:
             skipped += 1
             continue
         scanned += 1
-        for h in scan_pii(content, policy):
+        hits = scan_pii(content, policy)
+        taken = {(h["index_start"], h["index_end"]) for h in hits}
+        for h in scan_pii_model(content, policy):
+            if any(not (h["index_end"] <= s or h["index_start"] >= e) for s, e in taken):
+                continue
+            taken.add((h["index_start"], h["index_end"]))
+            hits.append(h)
+        for h in hits:
             h["file_id"] = f["id"]
             h["file_path"] = f["path"]
             findings.append(h)

@@ -89,8 +89,8 @@ npm run start
 
 任务会按文件类型自动判定模态：`.txt/.csv/.md/.log/.html` → 文本 PII，`.jpg/.png` 等 → 图像，`.mp3/.wav` 等 → 音频，`.mp4/.mkv` 等 → 视频，其余文本文件 → 代码密钥。
 
-- **文本 PII**：纯内置正则（手机/身份证/邮箱/银行卡含校验、姓名/地址轻量规则），无需额外依赖，开箱即用。
-- **图像**：人脸（OpenCV Haar）、二维码（OpenCV）、OCR（rapidocr）→ 文本 PII。需安装媒体依赖。
+- **文本 PII**：内置正则（手机/身份证/邮箱/银行卡含校验、姓名/地址轻量规则）开箱即用；可选 HaS_Text NER 增强。
+- **图像**：人脸（OpenCV Haar）、二维码（OpenCV）、OCR（rapidocr）→ 文本 PII；可选 HaS_Image YOLO 分割增强（21 类）。需安装媒体依赖。
 - **音频**：ASR（faster-whisper，首次自动下载模型）→ 文本 PII → 静音；变声（pitch / robot）。
 - **视频**：抽帧走图像检测 + 音轨走音频检测（需 ffmpeg）。
 
@@ -102,7 +102,11 @@ uv sync --group media
 ```
 
 未安装时这些模态会优雅降级：检测返回提示信息，代码与文本 PII 不受影响。
-模型权重统一放 `models/`（已 git 忽略），可自行下载 HaS_Text / HaS_Image 放入后由后续版本接入。
+
+**本地模型增强**（可选）：模型权重统一放 `models/`（已 git 忽略），用 `downmodels.ps1`（modelscope）下载到
+`models/HaS_Text_0209_0.6B_Q8/has_text_model.gguf` 与 `models/HaS_Image_0209_FP32/sensitive_seg_best.pt`。
+在策略里打开「使用本地模型增强检测」（`use_model`）后，文本走 HaS_Text NER、图像走 HaS_Image YOLO 分割，未下载模型时自动跳过。
+Windows 上 `llama-cpp-python` 无 PyPI 预编译包，已把 CPU wheel 固化为 `backend/vendor/` 下的本地依赖。
 
 ## 策略
 
@@ -117,7 +121,7 @@ uv sync --group media
 
 处理方式：**打码**（保留首尾）/ **删除** / **代号替换** / **加密**（对称可解密）/ **数字偏移**（加偏移并取整）。
 
-自定义策略支持：处理方式、保留字符数、可逆开关、置信度阈值、文本 PII 类型开关、加密密钥、数字偏移量、音频变声、忽略规则系列、自定义正则（Python `re` 语法，单捕获组时只处理该组）。
+自定义策略支持：处理方式、保留字符数、可逆开关、置信度阈值、文本 PII 类型开关、加密密钥、数字偏移量、音频变声、本地模型增强开关、忽略规则系列、自定义正则（Python `re` 语法，单捕获组时只处理该组）。
 
 ## API 摘要
 

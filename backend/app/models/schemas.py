@@ -27,6 +27,7 @@ class Policy(BaseModel):
     offset_amount: int = 0
     offset_round: int = 1
     voice_change: str = ""
+    use_model: bool = False
     builtin: bool = False
 
 
@@ -44,6 +45,7 @@ class PolicyIn(BaseModel):
     offset_amount: int = 0
     offset_round: int = 1
     voice_change: str = ""
+    use_model: bool = False
 
 
 class FileInfo(BaseModel):

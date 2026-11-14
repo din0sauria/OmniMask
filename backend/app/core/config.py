@@ -8,6 +8,8 @@ POLICY_FILE = DATA_DIR / "policies.json"
 KEYLEAK_DIR = ROOT / "keyleak"
 RULES_FILE = KEYLEAK_DIR / "data" / "regex" / "merged_rules.json"
 MODELS_DIR = Path(os.environ.get("OMNIMASK_MODELS", ROOT / "models"))
+HAS_TEXT_MODEL = MODELS_DIR / "HaS_Text_0209_0.6B_Q8" / "has_text_model.gguf"
+HAS_IMAGE_MODEL = MODELS_DIR / "HaS_Image_0209_FP32" / "sensitive_seg_best.pt"
 
 TEXT_EXTS = {".txt", ".csv", ".md", ".log", ".html", ".htm", ".rst"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}

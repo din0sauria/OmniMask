@@ -23,6 +23,7 @@ type FormState = {
   offset_amount: number;
   offset_round: number;
   voice_change: string;
+  use_model: boolean;
 };
 
 const PII_OPTIONS = [
@@ -48,6 +49,7 @@ const EMPTY: FormState = {
   offset_amount: 0,
   offset_round: 1,
   voice_change: "",
+  use_model: false,
 };
 
 function regexError(pattern: string): string {
@@ -86,6 +88,7 @@ export default function PoliciesPage() {
         offset_amount: p.offset_amount ?? 0,
         offset_round: p.offset_round ?? 1,
         voice_change: p.voice_change || "",
+        use_model: p.use_model ?? false,
       });
       setEditing("new");
     } else {
@@ -110,6 +113,7 @@ export default function PoliciesPage() {
       offset_amount: p.offset_amount ?? 0,
       offset_round: p.offset_round ?? 1,
       voice_change: p.voice_change || "",
+      use_model: p.use_model ?? false,
     });
     setEditing(p.id);
   }
@@ -137,6 +141,7 @@ export default function PoliciesPage() {
       offset_amount: Number(form.offset_amount) || 0,
       offset_round: Number(form.offset_round) || 1,
       voice_change: form.voice_change,
+      use_model: form.use_model,
     };
     try {
       setBusy(true);
@@ -299,6 +304,10 @@ export default function PoliciesPage() {
                     ))}
                   </div>
                 </div>
+                <label className="switch">
+                  <input type="checkbox" checked={form.use_model} onChange={(e) => set("use_model", e.target.checked)} />
+                  使用本地模型增强检测（HaS 文本 NER / 图像 YOLO 分割，需已下载模型并安装 media 依赖）
+                </label>
                 {form.mode === "encrypt" && (
                   <div className="field">
                     <label>加密密钥 <span className="hint">留空使用内置默认密钥</span></label>

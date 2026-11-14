@@ -3,6 +3,7 @@ import functools
 from pathlib import Path
 
 from ...core.config import MAX_FILE_BYTES
+from ..models import image_yolo
 from .text import scan_pii
 
 
@@ -53,6 +54,17 @@ def _mh(rule: str, label: str, bbox: list[int], conf: float, value: str = "") ->
     }
 
 
+_CLASS_ZH = {
+    "biometric_face": "人脸", "biometric_fingerprint": "指纹", "biometric_palmprint": "掌纹",
+    "id_card": "身份证", "hk_macau_permit": "港澳通行证", "passport": "护照",
+    "employee_badge": "工牌", "license_plate": "车牌", "bank_card": "银行卡",
+    "physical_key": "钥匙", "receipt": "收据", "shipping_label": "快递单",
+    "official_seal": "公章", "paper": "纸张", "whiteboard": "白板",
+    "sticky_note": "便签", "mobile_screen": "手机屏幕", "monitor_screen": "显示器屏幕",
+    "medical_wristband": "医用腕带", "qr_code": "二维码", "barcode": "条形码",
+}
+
+
 def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     cv2 = _cv()
     if cv2 is None:
@@ -89,6 +101,23 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
             f["media"] = "image"
             f["type_label"] = f"图中{hit['type_label']}"
             findings.append(f)
+
+    if policy.get("use_model"):
+        yolo = image_yolo()
+        if yolo is not None:
+            try:
+                res = yolo.predict(str(path), conf=0.25, verbose=False)[0]
+                have = {f["type_label"] for f in findings}
+                for box in res.boxes:
+                    x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+                    name = yolo.names[int(box.cls[0])]
+                    label = _CLASS_ZH.get(name, name)
+                    if label in have:
+                        continue
+                    conf = float(box.conf[0])
+                    findings.append(_mh(f"has:{name}", label, [x1, y1, x2 - x1, y2 - y1], conf))
+            except Exception:
+                pass
 
     warnings: list[str] = []
     return findings, warnings
