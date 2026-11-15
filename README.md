@@ -28,6 +28,7 @@ OmniMask/
 │       └── services/        # ingest / detect / mask / policy / report
 ├── frontend/                # Next.js 工作台
 ├── keyleak/                 # 原有密钥检测模块（规则库 + 过滤逻辑）
+├── doc/                     # 项目文档（规范 / 思路 / 任务清单）
 └── data/                    # 运行期元数据（自动创建，不入库）
     ├── policies.json        # 自定义策略
     └── tasks/<task_id>/
@@ -140,6 +141,12 @@ Windows 上 `llama-cpp-python` 无 PyPI 预编译包，已把 CPU wheel 固化�
 | GET | `/api/tasks/{id}/export` | 导出 ZIP（`inline=1` 供前端 fetch，`include_mapping=true` 打包映射表） |
 | GET | `/api/tasks/{id}/report` | 报告 JSON |
 | GET/POST/PUT/DELETE | `/api/policies` | 策略 CRUD |
+
+## 项目文档
+
+- [项目规范](doc/项目规范.md) — 目标架构、编码约定、模块与接口规范
+- [项目思路](doc/项目思路.md) — 需求背景、技术选型与参考项目/模型
+- [任务清单](doc/任务清单.md) — 分阶段开发进度（已全部完成）
 
 ## 说明
 
