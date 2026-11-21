@@ -98,9 +98,11 @@ def scan_pii(content: str, policy: dict) -> list[dict]:
     if want("phone"):
         for m in _PHONE.finditer(content):
             digits = re.sub(r"\D", "", m.group(0))
+            if digits.startswith("86") and len(digits) == 13:
+                digits = digits[2:]
             if len(digits) != 11:
                 continue
-            hits.append(_make(content, digits, m.start(), m.end(), "phone", "手机号", 0.95))
+            hits.append(_make(content, m.group(0), m.start(), m.end(), "phone", "手机号", 0.95))
             taken.add((m.start(), m.end()))
 
     if want("id_card"):
@@ -158,13 +160,17 @@ _TYPES = {
 }
 
 
+class TextModelError(RuntimeError):
+    pass
+
+
 def scan_pii_model(content: str, policy: dict) -> list[dict]:
-    """HaS_Text GGUF NER：返回实体并在原文中定位；无模型/未启用时返回空。"""
+    """Explicitly distinguish an unavailable/failed enabled model from no hits."""
     if not policy.get("use_model"):
         return []
     llm = text_llm()
     if llm is None:
-        return []
+        raise TextModelError('本地文本增强模型不可用')
     enabled = set(policy.get("pii_types") or [])
     types = [t for k, t in _TYPES.items() if not enabled or k in enabled]
     if not types:
@@ -181,22 +187,28 @@ def scan_pii_model(content: str, policy: dict) -> list[dict]:
             max_tokens=2048,
         )
         raw = resp["choices"][0]["message"]["content"]
-    except Exception:
-        return []
+    except Exception as exc:
+        raise TextModelError('本地文本增强模型推理失败') from exc
+    if not isinstance(raw, str):
+        raise TextModelError('本地文本增强模型输出格式无效')
     m = re.search(r"\{.*\}", raw, re.S)
     if not m:
-        return []
+        raise TextModelError('本地文本增强模型输出格式无效')
     try:
         data = json.loads(m.group(0))
-    except Exception:
-        return []
+    except Exception as exc:
+        raise TextModelError('本地文本增强模型输出格式无效') from exc
     if not isinstance(data, dict):
-        return []
+        raise TextModelError('本地文本增强模型输出格式无效')
     rev = {t: k for k, t in _TYPES.items()}
+    if any(key not in rev or not isinstance(values, list)
+           or any(not isinstance(value, str) for value in values)
+           for key, values in data.items()):
+        raise TextModelError('本地文本增强模型实体格式无效')
     hits: list[dict] = []
     taken: set[tuple[int, int]] = set()
     for type_name, values in data.items():
-        if not isinstance(values, list):
+        if type_name not in types:
             continue
         rule = rev.get(type_name, "entity")
         for v in values:
@@ -217,26 +229,41 @@ def detect_text_files(files: list[dict], policy: dict) -> dict:
     findings: list[dict] = []
     scanned = skipped = 0
     warnings: list[str] = []
+    states: dict[str, dict] = {}
     for f in files:
         abs_path = Path(f["abs"])
+        detail = {'state': 'complete', 'warnings': [], 'metadata': {}, 'transcript': []}
+        states[f['id']] = detail
         if not abs_path.exists():
+            detail.update(state='failed', warnings=['源文件不可读取'])
+            warnings.append(f"{f['path']}：源文件不可读取")
             continue
         try:
             if not _is_text_file(abs_path):
                 skipped += 1
+                detail.update(state='skipped', warnings=['未完成文本解码检查'])
                 continue
             if abs_path.stat().st_size > MAX_SCAN_BYTES:
                 skipped += 1
                 warnings.append(f"文件过大已跳过：{f['path']}")
+                detail.update(state='skipped', warnings=['文件过大已跳过'])
                 continue
             content, _ = read_text(abs_path)
         except OSError:
             skipped += 1
+            detail.update(state='failed', warnings=['源文件不可读取'])
+            warnings.append(f"{f['path']}：源文件不可读取")
             continue
         scanned += 1
         hits = scan_pii(content, policy)
         taken = {(h["index_start"], h["index_end"]) for h in hits}
-        for h in scan_pii_model(content, policy):
+        try:
+            model_hits = scan_pii_model(content, policy)
+        except TextModelError as exc:
+            model_hits = []
+            detail.update(state='partial', warnings=[str(exc)])
+            warnings.append(f"{f['path']}：{exc}")
+        for h in model_hits:
             if any(not (h["index_end"] <= s or h["index_start"] >= e) for s, e in taken):
                 continue
             taken.add((h["index_start"], h["index_end"]))
@@ -245,4 +272,4 @@ def detect_text_files(files: list[dict], policy: dict) -> dict:
             h["file_id"] = f["id"]
             h["file_path"] = f["path"]
             findings.append(h)
-    return {"findings": findings, "scanned": scanned, "skipped": skipped, "warnings": warnings}
+    return {"findings": findings, "scanned": scanned, "skipped": skipped, "warnings": warnings, 'files': states}

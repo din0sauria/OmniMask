@@ -246,12 +246,15 @@ def scan_text(content: str, path: str, policy: dict) -> dict:
     for f in out:
         f["risk"] = "high" if f["confidence"] >= 0.8 else "medium" if f["confidence"] >= 0.6 else "low"
     out.sort(key=lambda x: (x["index_start"], x["index_end"]))
+    if len(out) > 3000:
+        warnings_out.append('单文件命中超过3000条，仅保留前3000条；检查结果不完整')
     return {"findings": out[:3000], "warnings": warnings_out}
 
 
 def _is_text_file(path: Path) -> bool:
     try:
-        data = path.read_bytes()[:8192]
+        with path.open('rb') as stream:
+            data = stream.read(8192)
     except OSError:
         return False
     if b"\x00" in data:

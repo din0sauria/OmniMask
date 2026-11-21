@@ -23,9 +23,8 @@ def _keystream(key: str, n: int) -> bytes:
 
 
 def encrypt_value(value: str, key: str) -> str:
-    data = value.encode("utf-8")
-    ks = _keystream(key, len(data))
-    return base64.urlsafe_b64encode(bytes(a ^ b for a, b in zip(data, ks))).decode()
+    from ..policy import ensure_supported_generation
+    ensure_supported_generation({'mode': 'encrypt'})
 
 
 def decrypt_value(token: str, key: str) -> str:
@@ -67,7 +66,7 @@ def eligible(findings: list[dict], policy: dict, accepted_only: bool = False) ->
     min_conf = float(policy.get("min_confidence", 0) or 0)
     out = []
     for f in findings:
-        if f.get("status") == "rejected":
+        if f.get("status") != "accepted":
             continue
         if accepted_only and f.get("status") != "accepted":
             continue
@@ -95,7 +94,8 @@ def _replacement(f: dict, policy: dict, tokens: dict[str, str]) -> str:
     return mask_value(f["value"], mode, int(policy.get("mask_keep", 4)), policy)
 
 
-def mask_text(text: str, findings: list[dict], policy: dict, tokens: dict[str, str]) -> tuple[str, int, int]:
+def mask_text(text: str, findings: list[dict], policy: dict, tokens: dict[str, str],
+              operations: list[dict] | None = None) -> tuple[str, int, int]:
     hits = sorted(findings, key=lambda f: f["index_start"], reverse=True)
     limit = len(text)
     applied = 0
@@ -110,6 +110,9 @@ def mask_text(text: str, findings: list[dict], policy: dict, tokens: dict[str, s
         if e > limit:
             continue  # overlapping an already masked region
         text = text[:s] + _replacement(f, policy, tokens) + text[e:]
+        if operations is not None:
+            operations.append({'mode': f.get('mode') or policy.get('mode', 'mask'),
+                               'start': s, 'end': e})
         limit = s
         applied += 1
         removed += e - s
@@ -119,7 +122,9 @@ def mask_text(text: str, findings: list[dict], policy: dict, tokens: dict[str, s
 def compute(task: dict, findings: list[dict], accepted_only: bool = False) -> dict:
     """Compute masked outputs in memory; never writes to the source directory."""
     policy = task.get("policy") or {}
-    use = eligible(findings, policy, accepted_only)
+    from ..policy import ensure_supported_generation
+    ensure_supported_generation(policy, findings)
+    use = [f for f in eligible(findings, policy, accepted_only) if not f.get("media")]
     tokens = build_tokens(use, policy)
     by_file: dict[str, list[dict]] = {}
     for f in use:
@@ -127,10 +132,10 @@ def compute(task: dict, findings: list[dict], accepted_only: bool = False) -> di
 
     stats = {"findings_applied": 0, "chars_removed": 0, "files_changed": 0}
     outputs: dict[str, tuple[str, str]] = {}
+    operations: dict[str, list[dict]] = {}
     if use:
         for fi in task["files"]:
             hits = by_file.get(fi["id"], [])
-            fi["findings"] = len(hits)
             if not hits or not fi.get("is_text"):
                 continue
             p = Path(fi["abs"])
@@ -140,9 +145,11 @@ def compute(task: dict, findings: list[dict], accepted_only: bool = False) -> di
                 text, enc = read_text(p)
             except OSError:
                 continue
-            new, applied, removed = mask_text(text, hits, policy, tokens)
+            applied_operations: list[dict] = []
+            new, applied, removed = mask_text(text, hits, policy, tokens, applied_operations)
             if applied:
                 outputs[fi["id"]] = (new, enc)
+                operations[fi["id"]] = applied_operations
                 stats["findings_applied"] += applied
                 stats["chars_removed"] += removed
                 stats["files_changed"] += 1
@@ -150,14 +157,15 @@ def compute(task: dict, findings: list[dict], accepted_only: bool = False) -> di
     mapping = build_mapping(task, findings, accepted_only) if policy.get("reversible") else None
     if mapping is not None:
         stats["mapping_items"] = len(mapping["items"])
-    return {"stats": stats, "outputs": outputs, "mapping": mapping, "tokens": tokens, "policy": policy}
+    return {"stats": stats, "outputs": outputs, "operations": operations,
+            "mapping": mapping, "tokens": tokens, "policy": policy}
 
 
 def build_mapping(task: dict, findings: list[dict], accepted_only: bool = False) -> dict | None:
     policy = task.get("policy") or {}
     if not policy.get("reversible"):
         return None
-    use = eligible(findings, policy, accepted_only)
+    use = [f for f in eligible(findings, policy, accepted_only) if not f.get("media")]
     tokens = build_tokens(use, policy)
     items = []
     for value, token in tokens.items():
@@ -182,7 +190,7 @@ def build_mapping(task: dict, findings: list[dict], accepted_only: bool = False)
 def preview_file(task: dict, fi: dict, findings: list[dict]) -> dict:
     policy = task.get("policy") or {}
     text, _ = read_text(Path(fi["abs"]))
-    use = [f for f in findings if f["file_id"] == fi["id"] and f.get("status") != "rejected"]
+    use = [f for f in eligible(findings, policy, accepted_only=True) if f["file_id"] == fi["id"]]
     tokens = build_tokens(use, policy)
     masked, applied, _ = mask_text(text, use, policy, tokens)
     return {"text": text, "masked": masked, "applied": applied}

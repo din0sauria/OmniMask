@@ -1,5 +1,6 @@
 """Image detection: face / QR / OCR(PII). Needs opencv; degrades without it."""
 import functools
+import math
 from pathlib import Path
 
 from ...core.config import MAX_MEDIA_BYTES
@@ -28,11 +29,11 @@ def _ocr_lines(img) -> list[tuple[str, list[int]]]:
     """OCR each text line together with its bounding box."""
     eng = _ocr_engine()
     if eng is None:
-        return []
+        raise RuntimeError('OCR engine unavailable')
     try:
         result, _ = eng(img)
     except Exception:
-        return []
+        raise RuntimeError('OCR inference failed') from None
     if not result:
         return []
     out = []
@@ -77,6 +78,33 @@ _CLASS_ZH = {
 }
 
 
+def _qr_region(img, cv2):
+    """Retry failed QR localization at bounded scales, map back to source pixels.
+
+    Detection (including an undecodable QR) is enough to mask a region. Resizing
+    improves scale-sensitive corner finding, not target identity or decoding
+    guarantees. A successful original-scale result avoids extra per-frame work.
+    """
+    detector = cv2.QRCodeDetector()
+    height, width = img.shape[:2]
+    for scale in (1.0, .75, 1.5):
+        if scale > 1 and max(width, height) * scale > 2048:
+            continue
+        scaled = img if scale == 1 else cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        data, points, _ = detector.detectAndDecode(scaled)
+        if points is None:
+            continue
+        # Use actual resized dimensions: cv2 rounds noninteger image sizes.
+        sx, sy = width / scaled.shape[1], height / scaled.shape[0]
+        xs = [float(p[0]) * sx for p in points[0]]
+        ys = [float(p[1]) * sy for p in points[0]]
+        left, top = max(0, math.floor(min(xs))-2), max(0, math.floor(min(ys))-2)
+        right, bottom = min(width, math.ceil(max(xs))+2), min(height, math.ceil(max(ys))+2)
+        if right > left and bottom > top:
+            return data, [left, top, right-left, bottom-top]
+    return None
+
+
 def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     cv2 = _cv()
     if cv2 is None:
@@ -85,6 +113,7 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
     if img is None:
         return [], [f"无法读取图像：{path.name}"]
     findings: list[dict] = []
+    warnings: list[str] = []
 
     try:
         cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -92,19 +121,22 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
         for (x, y, fw, fh) in cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30)):
             findings.append(_mh("face", "人脸", [int(x), int(y), int(fw), int(fh)], 0.85))
     except Exception:
-        pass
+        warnings.append('人脸检测未完成')
 
     try:
-        det = cv2.QRCodeDetector()
-        data, pts, _ = det.detectAndDecode(img)
-        if pts is not None:
-            xs = [int(p[0]) for p in pts[0]]
-            ys = [int(p[1]) for p in pts[0]]
-            findings.append(_mh("qr_code", "二维码", [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)], 0.9, data))
+        qr = _qr_region(img, cv2)
+        if qr:
+            data, bbox = qr
+            findings.append(_mh("qr_code", "二维码", bbox, 0.9, data))
     except Exception:
-        pass
+        warnings.append('二维码检测未完成')
 
-    for text, box in _ocr_lines(img):
+    try:
+        ocr_lines = _ocr_lines(img)
+    except RuntimeError:
+        ocr_lines = []
+        warnings.append('OCR 检测未完成')
+    for text, box in ocr_lines:
         for hit in scan_pii(text, policy):
             f = dict(hit)
             f["bbox"] = box
@@ -127,9 +159,10 @@ def detect_image(path: Path, policy: dict) -> tuple[list[dict], list[str]]:
                     conf = float(box.conf[0])
                     findings.append(_mh(f"has:{name}", label, [x1, y1, x2 - x1, y2 - y1], conf))
             except Exception:
-                pass
+                warnings.append('本地图像增强模型推理失败')
+        else:
+            warnings.append('本地图像增强模型不可用')
 
-    warnings: list[str] = []
     return findings, warnings
 
 
