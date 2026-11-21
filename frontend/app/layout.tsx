@@ -3,8 +3,9 @@ import "./globals.css";
 import { SiteHeader } from "@/components/nav";
 
 export const metadata: Metadata = {
-  title: "OmniMask · 代码密钥脱敏工作台",
-  description: "填入本地代码路径，检测密钥与敏感串、审核后脱敏导出。",
+  title: "OmniMask · 多模态隐私脱敏工作台",
+  description:
+    "检测本地代码、文本、图像和音视频中的敏感信息，人工审核后脱敏导出。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -13,10 +14,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <div className="bg-grid" />
         <SiteHeader />
-        <main className="page">{children}</main>
+        <main className="page" id="main-content" tabIndex={-1}>
+          {children}
+        </main>
         <footer className="site-footer">
-          <span>OmniMask · 本地运行 · 数据不出机器</span>
-          <span className="mono">code detection only · v0.1</span>
+          <span>
+            OmniMask <span className="footer-dot">·</span> 本地处理，审核后导出
+          </span>
+          <span className="mono">
+            LOCAL WORKSPACE <span className="footer-dot">/</span> v0.2
+          </span>
         </footer>
       </body>
     </html>

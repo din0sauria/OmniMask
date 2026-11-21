@@ -26,6 +26,16 @@ export type Policy = {
   builtin: boolean;
 };
 
+export type Detection = {
+  state: "complete" | "partial" | "failed" | "skipped" | "not_checked";
+  warnings?: string[];
+  metadata?: { duration?: number; width?: number; height?: number; audio_tracks?: { index?: number; track_index?: number; duration?: number }[] };
+  transcript?: { start: number; end: number; text: string; track_index?: number }[];
+};
+export type TaskJob = { id: string; operation: string; status: string; stage: string; completed: number; total: number; error?: string };
+export type ReviewEdit = { id: string; status?: string; mode?: string; start?: number; end?: number; bbox?: [number, number, number, number]; track_index?: number };
+export type ManualFinding = Omit<ReviewEdit, "id" | "status" | "mode"> & { file_id: string; media: "audio" | "video" | "image"; value?: string };
+
 export type TaskFile = {
   id: string;
   path: string;
@@ -35,9 +45,13 @@ export type TaskFile = {
   is_text: boolean;
   lines: number;
   findings: number;
+  detection?: Detection;
 };
 
 export type Task = {
+  revision?: number;
+  job?: TaskJob;
+  verification?: Verification;
   id: string;
   name: string;
   status: string;
@@ -53,13 +67,25 @@ export type Task = {
     scanned?: number;
     skipped?: number;
     warnings?: string[];
-    mask?: { findings_applied: number; chars_removed: number; files_changed: number; media_changed?: number; mapping_items?: number };
+    mask?: { findings_applied: number; chars_removed: number; files_changed: number; media_changed?: number; media_findings_applied?: number; mapping_items?: number };
     [key: string]: unknown;
   };
   source: string;
   source_path: string;
   root: string;
   modality: string;
+};
+
+export type Verification = {
+  revision: number;
+  artifacts: { file_id: string; sha256: string }[];
+  status: "running" | "complete" | "partial" | "failed" | "cancelled" | "interrupted";
+  checked_at?: string;
+  candidate_count: number;
+  files: { file_id: string; path: string; media?: string; status: string; candidate_count: number;
+    candidates?: { type_label?: string; rule_name?: string; start?: number; end?: number; frame_index?: number; line_start?: number; track_index?: number }[];
+    warnings?: string[]; coverage?: { frames_scanned?: number; frame_check?: string } }[];
+  limitations?: string[];
 };
 
 export type Finding = {
@@ -87,6 +113,11 @@ export type Finding = {
   start?: number;
   end?: number;
   frame_ts?: number;
+  frame_index?: number;
+  frame_duration?: number;
+  track_index?: number;
+  timing_precision?: string;
+  source?: string;
 };
 
 export type Summary = {
@@ -116,6 +147,7 @@ export type TaskListItem = {
 };
 
 export type Preview = {
+  masked_ready?: boolean;
   file: TaskFile;
   original: string;
   masked: string;

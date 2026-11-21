@@ -3,6 +3,13 @@ import type { FindingStatus } from "@/lib/types";
 
 export const STATUS_LABELS: Record<string, string> = {
   created: "待检测",
+  queued: "排队中",
+  detecting: "检测中",
+  masking: "脱敏中",
+  failed: "处理失败",
+  cancelled: "已取消",
+  interrupted: "已中断",
+  partial: "部分检测失败",
   detected: "待审核",
   reviewed: "已审核",
   masked: "已脱敏",

@@ -1,85 +1,134 @@
 "use client";
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  createTask, detectTask, getEnv, getPolicies, getTasks,
+  createTask,
+  detectTask,
+  getEnv,
+  getPolicies,
+  getTasks,
 } from "@/lib/api";
 import type { Policy, TaskListItem } from "@/lib/types";
 import { Empty, formatTime, StatusPill } from "@/components/ui";
 import { PathPicker } from "@/components/path-picker";
+import TaskStoragePanel from "@/components/task-storage-panel";
 import {
-  AlertIcon, CheckIcon, ChevronIcon, FolderIcon, KeyIcon, ScanIcon,
+  AlertIcon,
+  ChevronIcon,
+  FileIcon,
+  FolderIcon,
+  KeyIcon,
+  ScanIcon,
+  ShieldIcon,
 } from "@/components/icons";
-
 const LAST_PATH = "omnimask:lastPath";
-
-function autoName(p: string): string {
-  const base = p.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).pop() || "";
+function suggestedPolicy(path: string) {
+  const ext = path.trim().split(".").pop()?.toLowerCase() || "";
+  if (/^(png|jpg|jpeg|webp|bmp|tiff|gif|wav|mp3|m4a|flac|ogg|mp4|mov|mkv|webm|avi)$/.test(ext)) return "media";
+  if (/^(txt|md|csv|log|rst|html)$/.test(ext)) return "text-pii";
+  return "standard";
+}
+function autoName(p: string) {
+  const base =
+    p
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .filter(Boolean)
+      .pop() || "";
   return base ? `${base} 脱敏` : "";
 }
-
-function modeText(m: string): string {
-  return m === "mask" ? "打码" : m === "delete" ? "删除" : m === "replace" ? "代号替换" : m === "encrypt" ? "加密" : "数字偏移";
+function modeText(m: string) {
+  return (
+    (
+      {
+        mask: "掩码",
+        delete: "删除",
+        replace: "代号替换",
+        encrypt: "实验加密",
+        offset: "数字偏移",
+      } as Record<string, string>
+    )[m] || m
+  );
 }
-
 export default function HomePage() {
   const router = useRouter();
-  const [tasks, setTasks] = useState<TaskListItem[]>([]);
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState("");
-  const [sourcePath, setSourcePath] = useState("");
-  const [policyId, setPolicyId] = useState("standard");
-  const [operator, setOperator] = useState("");
-  const [purpose, setPurpose] = useState("内部代码安全检查");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const nameTouched = useRef(false);
-  const operatorTouched = useRef(false);
-
-  const reload = () => {
-    Promise.all([getTasks(), getPolicies()])
-      .then(([t, p]) => { setTasks(t); setPolicies(p); })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-  useEffect(reload, []);
-
+  const [tasks, setTasks] = useState<TaskListItem[]>([]),
+    [policies, setPolicies] = useState<Policy[]>([]);
+  const [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState("");
+  const [name, setName] = useState(""),
+    [sourcePath, setSourcePath] = useState(""),
+    [policyId, setPolicyId] = useState("standard");
+  const [operator, setOperator] = useState(""),
+    [purpose, setPurpose] = useState("内部敏感信息检查");
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState(""),
+    [status, setStatus] = useState("all"),
+    [showAll, setShowAll] = useState(false);
+  const nameTouched = useRef(false),
+    policyTouched = useRef(false),
+    operatorTouched = useRef(false),
+    submitting = useRef(false);
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    const results = await Promise.allSettled([getTasks(), getPolicies()]);
+    const messages: string[] = [];
+    if (results[0].status === "fulfilled") setTasks(results[0].value);
+    else
+      messages.push(`任务加载失败：${results[0].reason.message || "请重试"}`);
+    if (results[1].status === "fulfilled") setPolicies(results[1].value.filter(p => p.mode !== "encrypt"));
+    else
+      messages.push(`策略加载失败：${results[1].reason.message || "请重试"}`);
+    setLoadError(messages.join("；"));
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
   useEffect(() => {
     getEnv()
-      .then((env) => { if (!operatorTouched.current) setOperator(env.user); })
+      .then((env) => {
+        if (!operatorTouched.current) setOperator(env.user);
+      })
       .catch(() => {});
     try {
       const last = localStorage.getItem(LAST_PATH);
       if (last) {
         setSourcePath(last);
+        setPolicyId(suggestedPolicy(last));
         if (!nameTouched.current) setName(autoName(last));
       }
     } catch {}
   }, []);
-
-  function applyPath(p: string) {
-    setSourcePath(p);
-    if (!nameTouched.current) setName(autoName(p));
+  function applyPath(path: string) {
+    setSourcePath(path);
+    if (!policyTouched.current) setPolicyId(suggestedPolicy(path));
+    if (!nameTouched.current) setName(autoName(path));
   }
-
-  function rememberPath(p: string) {
-    try { localStorage.setItem(LAST_PATH, p); } catch {}
+  function rememberPath(path: string) {
+    try {
+      localStorage.setItem(LAST_PATH, path);
+    } catch {}
   }
-
   async function submit() {
-    setError(""); setNotice("");
+    if (submitting.current) return;
+    setError("");
     if (!sourcePath.trim()) {
-      setError("请填写本地文件或目录路径。");
+      setError("请先选择一个本地文件或目录。");
       return;
     }
+    if (!policies.some((p) => p.id === policyId)) {
+      setError("请选择可用的检测策略。");
+      return;
+    }
+    submitting.current = true;
     setBusy(true);
     try {
-      const { task, warnings } = await createTask({
+      const { task } = await createTask({
         source_path: sourcePath.trim(),
         name: name.trim(),
         policy_id: policyId,
@@ -87,224 +136,429 @@ export default function HomePage() {
         purpose: purpose.trim(),
       });
       rememberPath(sourcePath.trim());
-      if (warnings?.length) setNotice(warnings.slice(0, 2).join("；"));
+      // A created task can retry detection on its task page without duplication.
       try {
         await detectTask(task.id, policyId);
-      } catch (e) {
-        setNotice(`任务已创建，但自动检测失败：${(e as Error).message}。可在任务页重新检测。`);
+      } catch (err) {
+        try {
+          sessionStorage.setItem(
+            `omnimask:task-notice:${task.id}`,
+            `任务已创建，但检测未能启动：${(err as Error).message}。请点击开始检测重试。`,
+          );
+        } catch {}
       }
       router.push(`/tasks/${task.id}`);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (err) {
+      setError((err as Error).message);
+      submitting.current = false;
       setBusy(false);
     }
   }
-
   const selectedPolicy = policies.find((p) => p.id === policyId);
-  const totalFindings = tasks.reduce((n, t) => n + t.findings, 0);
-  const totalFiles = tasks.reduce((n, t) => n + t.file_count, 0);
-
+  const totalFiles = tasks.reduce((n, t) => n + t.file_count, 0),
+    totalFindings = tasks.reduce((n, t) => n + t.findings, 0);
+  const filtered = tasks.filter(
+    (t) =>
+      (status === "all" || t.status === status) &&
+      `${t.name} ${t.id} ${t.source_path} ${t.policy}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+  );
+  const visible = showAll ? filtered : filtered.slice(0, 6);
   return (
-    <>
-      <section className="hero">
+    <div className="home-page">
+      <section className="home-heading">
         <div>
-          <div className="eyebrow">multi-modal desensitization · local first</div>
-          <h1>把敏感信息留在<em>源头</em>。</h1>
+          <div className="eyebrow">本地隐私处理工作台</div>
+          <h1>
+            让每一次分享，<em>更有把握</em>。
+          </h1>
           <p className="sub">
-            填入本机文件或目录，按类型自动检测：代码密钥、文本 PII（手机/身份证/邮箱/银行卡/姓名/地址）、
-            图像人脸/二维码、音频语音敏感片段。先检测、再审核、最后导出，源文件不会被修改或复制。
+            从本地文件开始，检测敏感信息，审核后生成脱敏副本。
           </p>
         </div>
-        <div className="hero-stats">
-          <div className="stat"><b>{tasks.length}</b><span>任务总数</span></div>
-          <div className="stat hot"><b>{totalFindings}</b><span>累计命中</span></div>
-          <div className="stat"><b>{totalFiles}</b><span>已扫描文件</span></div>
+        <div className="home-local">
+          <ShieldIcon size={17} />
+          <span>
+            本机处理<b>源文件只读</b>
+          </span>
         </div>
       </section>
-
-      {error && <div className="notice error" style={{ marginBottom: 16 }}><AlertIcon />{error}</div>}
-      {notice && <div className="notice info" style={{ marginBottom: 16 }}><ScanIcon />{notice}</div>}
-
-      <div className="grid-main">
-        <div className="stack">
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <div className="card-title"><ScanIcon size={17} />新建检测任务</div>
-                <div className="card-sub">后端直接读取本地路径，不复制、不移动源文件</div>
+      <section className="home-overview" aria-label="任务概览">
+        {[
+          {
+            label: "任务总数",
+            value: tasks.length,
+            icon: <FolderIcon size={19} />,
+            hint: "本机任务记录",
+          },
+          {
+            label: "累计命中",
+            value: totalFindings,
+            icon: <ScanIcon size={19} />,
+            hint: "检测结果需人工复核",
+          },
+          {
+            label: "累计导入文件",
+            value: totalFiles,
+            icon: <FileIcon size={19} />,
+            hint: "含未检测或被跳过文件",
+          },
+        ].map((item) => (
+          <div className="overview-item" key={item.label}>
+            <span className="overview-icon">{item.icon}</span>
+            <div>
+              <span>{item.label}</span>
+              <b>{loading ? "—" : item.value.toLocaleString()}</b>
+              <small>{item.hint}</small>
+            </div>
+          </div>
+        ))}
+      </section>
+      {loadError && (
+        <div className="notice error home-load-error" role="alert">
+          <AlertIcon size={17} />
+          <span>{loadError}</span>
+          <button
+            className="btn btn-sm"
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+          >
+            重新加载
+          </button>
+        </div>
+      )}
+      <div className="home-create-grid">
+        <section className="card home-create-card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">
+                <ScanIcon size={18} />
+                新建检测任务
               </div>
-              <span className="badge teal">local path</span>
+              <div className="card-sub">选择内容与策略，检测将在后台运行</div>
+            </div>
+            <span className="badge teal">01 / 开始检查</span>
+          </div>
+          <form
+            className="card-body home-create-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+            aria-busy={busy}
+          >
+            <fieldset disabled={busy} className="home-fieldset">
+              <div className="home-step-label">
+                <span>1</span>
+                <label htmlFor="source-path">选择文件或目录</label>
+              </div>
+              <div className="path-row">
+                <input
+                  id="source-path"
+                  className="mono path-input"
+                  value={sourcePath}
+                  onChange={(e) => applyPath(e.target.value)}
+                  onBlur={() =>
+                    sourcePath.trim() && rememberPath(sourcePath.trim())
+                  }
+                  placeholder="输入本机绝对路径，或点击浏览选择"
+                  spellCheck={false}
+                  required
+                  aria-describedby="source-path-hint"
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <FolderIcon size={16} />
+                  浏览文件
+                </button>
+              </div>
+              <p id="source-path-hint" className="path-hint">
+                支持代码、文本、图片、音频与视频。最多500个文件；文本1
+                MiB、媒体500 MiB，超限会提示并跳过。
+              </p>
+              <div className="home-step-label">
+                <span>2</span>
+                <b>选择处理策略</b>
+                <Link href="/policies">
+                  管理策略
+                  <ChevronIcon size={12} />
+                </Link>
+              </div>
+              <div className="home-policy-compact">
+                <label className="sr-only" htmlFor="home-policy">处理策略</label>
+                <select id="home-policy" value={policyId} onChange={e => {policyTouched.current = true; setPolicyId(e.target.value);}}>
+                  {policies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <p className="path-hint">{policyTouched.current ? "已保留你手动选择的策略。" : "根据路径扩展名建议策略；目录和未知类型使用标准策略，可自行切换。"}</p>
+                {selectedPolicy && <div className="home-policy-summary">
+                  <span className="badge teal">{modeText(selectedPolicy.mode)}</span>
+                  {selectedPolicy.voice_change && <span className="badge">变声效果</span>}
+                  <p>{selectedPolicy.description}</p>
+                  <details><summary>查看处理示例</summary><p>仅为示意，实际效果取决于检测与人工审核。图片/视频遮挡选中区域，音频将选中区间静音；变声开关独立生效。</p><code>{selectedPolicy.mode === "delete" ? "手机号 13800138000 → 手机号" : selectedPolicy.mode === "replace" ? "手机号 13800138000 → 手机号 [PHONE_001]" : selectedPolicy.mode === "offset" ? "数字偏移仅适用于匹配的数字文本，不保证不可恢复。" : "手机号 13800138000 → 手机号 138****8000（示意）"}</code></details>
+                </div>}
+                {!policies.length && (
+                  <Empty
+                    title={loading ? "正在加载策略…" : "暂无可用策略"}
+                    hint="请重新加载，或到策略配置页创建策略"
+                  />
+                )}
+              </div>
+              <details className="home-options">
+                <summary>
+                  任务信息<span>名称、操作人和用途（可选）</span>
+                </summary>
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="task-name">任务名称</label>
+                    <input
+                      id="task-name"
+                      value={name}
+                      onChange={(e) => {
+                        nameTouched.current = true;
+                        setName(e.target.value);
+                      }}
+                      placeholder="根据路径自动填写"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="operator">操作人</label>
+                    <input
+                      id="operator"
+                      value={operator}
+                      onChange={(e) => {
+                        operatorTouched.current = true;
+                        setOperator(e.target.value);
+                      }}
+                      placeholder="当前系统用户"
+                    />
+                  </div>
+                  <div className="field full">
+                    <label htmlFor="task-purpose">数据用途</label>
+                    <input
+                      id="task-purpose"
+                      value={purpose}
+                      onChange={(e) => setPurpose(e.target.value)}
+                      placeholder="例如：内部资料共享"
+                    />
+                  </div>
+                </div>
+              </details>
+            </fieldset>
+            {error && (
+              <div className="notice error" role="alert">
+                <AlertIcon size={16} />
+                {error}
+              </div>
+            )}
+            <div className="home-submit">
+              <span>
+                {selectedPolicy ? (
+                  <>
+                    已选 <b>{selectedPolicy.name}</b>
+                  </>
+                ) : (
+                  "请先选择策略"
+                )}
+                <small>审核后再生成脱敏结果</small>
+              </span>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={busy || !sourcePath.trim() || !selectedPolicy}
+              >
+                {busy ? (
+                  <>
+                    <span className="spinner" />
+                    正在创建…
+                  </>
+                ) : (
+                  <>
+                    <ScanIcon size={16} />
+                    创建并开始检测
+                    <ChevronIcon size={14} />
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </section>
+        <aside className="home-aside">
+          <section className="card home-guide">
+            <div className="card-head">
+              <div className="card-title">每一步，都由你掌握</div>
             </div>
             <div className="card-body">
-              <div className="form-grid" style={{ marginBottom: 16 }}>
-                <div className="field">
-                  <label>任务名称 <span className="hint">自动取路径名，可修改</span></label>
-                  <input value={name} onChange={(e) => { nameTouched.current = true; setName(e.target.value); }} placeholder="选择路径后自动填写" />
-                </div>
-                <div className="field">
-                  <label>操作人 <span className="hint">默认当前系统用户</span></label>
-                  <input value={operator} onChange={(e) => { operatorTouched.current = true; setOperator(e.target.value); }} placeholder="例如：陈一东" />
-                </div>
-                <div className="field full">
-                  <label>数据用途 <span className="hint">默认内部代码安全检查</span></label>
-                  <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="例如：向外部审计方提供脱敏代码用于漏洞评估" />
-                </div>
-              </div>
-
-              <div className="field">
-                <label>本地文件或目录 <span className="hint">绝对路径 · 支持单文件或整个仓库</span></label>
-                <div className="path-row">
-                  <input
-                    className="mono path-input"
-                    value={sourcePath}
-                    onChange={(e) => applyPath(e.target.value)}
-                    onBlur={() => { if (sourcePath.trim()) rememberPath(sourcePath.trim()); }}
-                    placeholder="D:\work\my-repo 或 D:\work\app\config.py"
-                    spellCheck={false}
-                  />
-                  <button type="button" className="btn" onClick={() => setPickerOpen(true)}>
-                    <FolderIcon size={15} />浏览…
-                  </button>
-                </div>
-                <div className="path-hint">
-                  <FolderIcon size={13} />
-                  <span>点击「浏览…」选择本机文件或目录；最多导入 500 个文件，文本扫描上限 1 MB、媒体 500 MB，超限自动跳过</span>
-                </div>
-              </div>
-
-              <div className="divider" />
-
-              <div className="field">
-                <label>脱敏策略</label>
-                <div className="policy-grid">
-                  {policies.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`policy-card ${policyId === p.id ? "selected" : ""}`}
-                      onClick={() => setPolicyId(p.id)}
-                    >
-                      <div className="policy-name">
-                        {p.name}
-                        {policyId === p.id && <CheckIcon size={14} className="selected-check" />}
-                      </div>
-                      <div className="policy-desc">{p.description}</div>
-                      <div className="policy-meta">
-                        <span className="badge">{modeText(p.mode)}</span>
-                        {p.reversible && <span className="badge lime">可逆</span>}
-                        {p.min_confidence > 0 && <span className="badge amber">阈值 {p.min_confidence}</span>}
-                        {p.custom_regex.length > 0 && <span className="badge teal">{p.custom_regex.length} 条自定义</span>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="btn-row" style={{ marginTop: 20 }}>
-                <button className="btn btn-primary" onClick={submit} disabled={busy || !sourcePath.trim()}>
-                  {busy ? <><span className="spinner" />正在检测…</> : <><ScanIcon size={16} />创建任务并开始检测</>}
-                </button>
-                <span className="sub" style={{ fontSize: 12 }}>
-                  {selectedPolicy ? `将使用「${selectedPolicy.name}」策略` : "选择策略后开始"}
-                </span>
-              </div>
+              <ol className="home-guide-list">
+                {[
+                  ["检测", "自动定位可能的敏感信息"],
+                  ["审核", "确认、忽略，或补充遗漏范围"],
+                  ["脱敏", "预览遮挡、静音或文本替换"],
+                  ["导出", "下载处理副本与处理报告"],
+                ].map(([title, description], i) => (
+                  <li key={title}>
+                    <span>{i + 1}</span>
+                    <div>
+                      <b>{title}</b>
+                      <p>{description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </div>
           </section>
-
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <div className="card-title"><KeyIcon size={17} />最近任务</div>
-                <div className="card-sub">最近的检测与脱敏记录</div>
-              </div>
-              <span className="badge">{tasks.length} 个</span>
+          <div className="home-note">
+            <ShieldIcon size={20} />
+            <div>
+              <b>原件保留，结果可检查</b>
+              <p>
+                源文件不会被覆盖。检测结果需要人工复核；原始预览与转写也会保存在本机任务目录。
+              </p>
+              <Link href="/policies">
+                了解处理策略
+                <ChevronIcon size={13} />
+              </Link>
             </div>
-            <div className="card-body tight">
-              {loading ? (
-                <Empty title="正在加载…" />
-              ) : tasks.length === 0 ? (
-                <Empty icon={<KeyIcon size={26} />} title="还没有任务" hint="填入一个本地代码目录，开始密钥扫描" />
-              ) : (
-                <div className="task-list">
-                  {tasks.slice(0, 8).map((t) => (
-                    <Link key={t.id} href={`/tasks/${t.id}`} className="task-row">
-                      <div style={{ minWidth: 0 }}>
-                        <div className="task-name">
-                          <span>{t.name}</span>
-                          <StatusPill status={t.status} />
-                        </div>
-                        <div className="task-meta">
-                          <span className="path" title={t.source_path}>{t.source_path || t.id}</span>
-                          <span>{t.policy}</span>
-                          <span>{t.file_count} 文件</span>
-                          <span>{formatTime(t.updated_at)}</span>
-                        </div>
-                      </div>
-                      <div className="task-count"><b>{t.findings}</b>命中</div>
-                      <div className="task-go"><ChevronIcon size={16} /></div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <div className="stack">
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <div className="card-title">策略模板</div>
-                <div className="card-sub">标准 / 删除 / 可逆 / 严格</div>
-              </div>
-              <Link href="/policies" className="btn btn-sm btn-ghost">管理<ChevronIcon size={14} /></Link>
-            </div>
-            <div className="card-body" style={{ display: "grid", gap: 10 }}>
-              {policies.map((p) => (
-                <div key={p.id} className="policy-card" style={{ cursor: "default" }}>
-                  <div className="policy-name">
-                    {p.name}
-                    {p.builtin ? <span className="badge">内置</span> : <span className="badge teal">自定义</span>}
-                  </div>
-                  <div className="policy-desc">{p.description}</div>
-                </div>
-              ))}
-              {!policies.length && <Empty title="暂无策略" />}
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <div className="card-title">流程</div>
-            </div>
-            <div className="card-body" style={{ display: "grid", gap: 12 }}>
-              {[
-                ["01", "输入", "填入本地文件或目录路径"],
-                ["02", "检测", "按类型自动：代码密钥 / 文本 PII / 图像 / 音频"],
-                ["03", "审核", "逐条确认、忽略或调整方式"],
-                ["04", "脱敏", "生成脱敏内容，不写回源目录"],
-                ["05", "导出", "ZIP + 脱敏报告，可附映射表"],
-              ].map(([n, t, d]) => (
-                <div key={n} style={{ display: "flex", gap: 11 }}>
-                  <span className="badge" style={{ height: 22, display: "grid", placeItems: "center" }}>{n}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 550 }}>{t}</div>
-                    <div style={{ color: "var(--muted-2)", fontSize: 11.5 }}>{d}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
+          </div>
+        </aside>
       </div>
-
+      <section className="card home-recent">
+        <div className="card-head">
+          <div>
+            <div className="card-title">
+              <KeyIcon size={17} />
+              任务记录<span className="badge">{tasks.length}</span>
+            </div>
+            <div className="card-sub">继续审核，或查看已生成的处理结果</div>
+          </div>
+          <button
+            className="btn btn-sm btn-ghost"
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+          >
+            {loading ? "更新中…" : "刷新记录"}
+          </button>
+        </div>
+        <div className="task-list-tools">
+          <input
+            aria-label="搜索任务"
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShowAll(false);
+            }}
+            placeholder="搜索任务名称、路径或策略…"
+          />
+          <select
+            aria-label="筛选任务状态"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setShowAll(false);
+            }}
+          >
+            <option value="all">全部状态</option>
+            <option value="created">待检测</option>
+            <option value="detected">待审核</option>
+            <option value="reviewed">已审核</option>
+            <option value="masked">已脱敏</option>
+            <option value="exported">已导出</option>
+          </select>
+        </div>
+        <div className="card-body tight">
+          {loading && !tasks.length ? (
+            <Empty title="正在加载任务…" />
+          ) : !tasks.length ? (
+            <Empty
+              icon={<FolderIcon size={25} />}
+              title={loadError ? "任务记录暂不可用" : "还没有任务"}
+              hint={
+                loadError
+                  ? "请检查服务连接后重新加载"
+                  : "选择上方本地文件，开始第一次检测"
+              }
+            />
+          ) : !filtered.length ? (
+            <div className="home-no-results">
+              <Empty title="没有匹配的任务" hint="试试其他关键词或任务状态" />
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setQuery("");
+                  setStatus("all");
+                }}
+              >
+                清除筛选
+              </button>
+            </div>
+          ) : (
+            <div className="task-list">
+              {visible.map((t) => (
+                <Link href={`/tasks/${t.id}`} key={t.id} className="task-row">
+                  <span className="task-row-icon">
+                    <FileIcon size={18} />
+                  </span>
+                  <div className="task-row-main">
+                    <div className="task-name">
+                      <span>{t.name}</span>
+                      <StatusPill status={t.status} />
+                    </div>
+                    <div className="task-meta">
+                      <span className="path" title={t.source_path}>
+                        {t.source_path || t.id}
+                      </span>
+                      <span>{t.policy}</span>
+                      <span>{t.file_count} 文件</span>
+                    </div>
+                  </div>
+                  <div className="task-row-end">
+                    <span>{formatTime(t.updated_at)}</span>
+                    <b>
+                      {t.findings}
+                      <small> 命中</small>
+                    </b>
+                  </div>
+                  <ChevronIcon size={16} />
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        {filtered.length > 6 && (
+          <div className="home-list-footer">
+            <span>
+              显示 {visible.length} / {filtered.length} 条记录
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? "收起记录" : "显示全部记录"}
+              <ChevronIcon size={13} />
+            </button>
+          </div>
+        )}
+      </section>
+      <TaskStoragePanel onChanged={reload} />
       {pickerOpen && (
         <PathPicker
           initial={sourcePath}
           onClose={() => setPickerOpen(false)}
-          onPick={(p) => { applyPath(p); rememberPath(p); setPickerOpen(false); }}
+          onPick={(path) => {
+            applyPath(path);
+            rememberPath(path);
+            setPickerOpen(false);
+          }}
         />
       )}
-    </>
+    </div>
   );
 }

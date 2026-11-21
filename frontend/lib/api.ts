@@ -1,4 +1,14 @@
-import type { FsData, Policy, Preview, Summary, Task, TaskListItem } from "./types";
+import type {
+  Finding,
+  ManualFinding,
+  ReviewEdit,
+  FsData,
+  Policy,
+  Preview,
+  Summary,
+  Task,
+  TaskListItem,
+} from "./types";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { cache: "no-store", ...init });
@@ -20,7 +30,9 @@ function jsonInit(method: string, body: unknown): RequestInit {
 }
 
 export function health() {
-  return api<{ service: string; keyleak: boolean; rules: boolean }>("/api/health");
+  return api<{ service: string; keyleak: boolean; rules: boolean }>(
+    "/api/health",
+  );
 }
 
 export function getEnv() {
@@ -28,7 +40,9 @@ export function getEnv() {
 }
 
 export function browseFs(path = "") {
-  return api<FsData>(`/api/fs${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+  return api<FsData>(
+    `/api/fs${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+  );
 }
 
 export function getPolicies() {
@@ -48,11 +62,19 @@ export function deletePolicy(id: string) {
 }
 
 export function getTasks(q = "") {
-  return api<TaskListItem[]>(`/api/tasks${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  return api<TaskListItem[]>(
+    `/api/tasks${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+  );
 }
 
 export function getTask(id: string) {
   return api<{ task: Task; summary: Summary }>(`/api/tasks/${id}`);
+}
+
+export function getPendingFindings(taskId: string) {
+  return api<{ findings: Finding[]; summary: Summary }>(
+    `/api/tasks/${taskId}/findings?status=pending`,
+  );
 }
 
 export function deleteTask(id: string) {
@@ -66,12 +88,16 @@ export function createTask(data: {
   operator?: string;
   purpose?: string;
 }) {
-  return api<{ task: Task; warnings: string[] }>("/api/tasks", jsonInit("POST", data));
+  return api<{ task: Task; warnings: string[] }>(
+    "/api/tasks",
+    jsonInit("POST", data),
+  );
 }
 
 export function detectTask(id: string, policyId: string) {
   return api<{ task: Task; summary: Summary; warnings: string[] }>(
-    `/api/tasks/${id}/detect`, jsonInit("POST", { policy_id: policyId }),
+    `/api/tasks/${id}/detect`,
+    jsonInit("POST", { policy_id: policyId, background: true }),
   );
 }
 
@@ -81,20 +107,40 @@ export function getPreview(taskId: string, fileId: string) {
 
 export function review(
   taskId: string,
-  payload: { items?: { id: string; status?: string; mode?: string }[]; accept_all?: boolean; reject_all?: boolean },
+  payload: {
+    items?: ReviewEdit[];
+    add?: ManualFinding[];
+    accept_all?: boolean;
+    reject_all?: boolean;
+  },
 ) {
-  return api<{ summary: Summary; task: Task }>(`/api/tasks/${taskId}/review`, jsonInit("POST", payload));
+  return api<{ summary: Summary; task: Task }>(
+    `/api/tasks/${taskId}/review`,
+    jsonInit("POST", payload),
+  );
 }
 
 export function maskTask(taskId: string, acceptedOnly = false) {
-  return api<{ stats: { findings_applied: number; chars_removed: number; files_changed: number; media_changed?: number; mapping_items?: number }; summary: Summary; task: Task }>(
-    `/api/tasks/${taskId}/mask`, jsonInit("POST", { accepted_only: acceptedOnly }),
+  return api<{
+    stats: {
+      findings_applied: number;
+      chars_removed: number;
+      files_changed: number;
+      media_changed?: number;
+      mapping_items?: number;
+    };
+    summary: Summary;
+    task: Task;
+  }>(
+    `/api/tasks/${taskId}/mask`,
+    jsonInit("POST", { accepted_only: acceptedOnly, background: true }),
   );
 }
 
 export function restoreTask(taskId: string) {
   return api<{ files: number; tokens: number; download: string }>(
-    `/api/tasks/${taskId}/restore`, jsonInit("POST", {}),
+    `/api/tasks/${taskId}/restore`,
+    jsonInit("POST", {}),
   );
 }
 
@@ -104,7 +150,10 @@ export const restoreDownloadUrl = (id: string) =>
   `/api/tasks/${id}/restore/download?inline=1`;
 export const mappingUrl = (id: string) => `/api/tasks/${id}/mapping`;
 
-export async function download(url: string, fallbackName: string): Promise<void> {
+export async function download(
+  url: string,
+  fallbackName: string,
+): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) {
     let msg = `下载失败（${res.status}）`;
@@ -124,4 +173,8 @@ export async function download(url: string, fallbackName: string): Promise<void>
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+
+export function cancelTask(id: string) {
+  return api<{ task: Task }>(`/api/tasks/${id}/cancel`, jsonInit("POST", {}));
 }
