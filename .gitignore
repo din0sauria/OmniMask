@@ -1,6 +1,9 @@
 # runtime task metadata (root only; keyleak/data/ 是检测规则与词表，需入库)
 /data/
 /models/
+/.tools/
+/.validation/
+frontend/tsconfig.tsbuildinfo
 
 *.zip
 .env
