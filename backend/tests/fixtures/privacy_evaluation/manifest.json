@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "dataset_id": "omnimask-local-labelled-v1",
+  "seed": 42,
+  "description": "Small deterministic functional evaluation; not a natural-data accuracy benchmark.",
+  "limitations": [
+    "No natural recordings, real people or real identity documents are included.",
+    "Frames from one generated clip are correlated and must not be treated as independent samples.",
+    "Opaque-region and exact-payload checks validate this fixture's expected action, not general privacy.",
+    "Known first-frame QR and repeated-zero ASR failures are retained."
+  ],
+  "cases": [
+    {"id":"text_positive","kind":"text","source_kind":"synthetic","generator":"text_positive","unit":"character_entity","scope_rules":["phone","email"]},
+    {"id":"text_negative","kind":"text","source_kind":"synthetic","generator":"text_negative","unit":"character_entity","scope_rules":["phone","email"]},
+    {"id":"code_positive","kind":"code","source_kind":"synthetic","generator":"code_positive","unit":"character_entity","scope_rules":["generic-api-key"]},
+    {"id":"code_negative","kind":"code","source_kind":"synthetic","generator":"code_negative","unit":"character_entity","scope_rules":["generic-api-key"]},
+    {"id":"image_positive","kind":"image","source_kind":"synthetic","generator":"image_positive","unit":"image_object","scope_rules":["phone","qr_code"]},
+    {"id":"image_negative","kind":"image","source_kind":"synthetic","generator":"image_negative","unit":"image_object","scope_rules":["phone","qr_code"]},
+    {"id":"video_transient","kind":"video","source_kind":"synthetic","generator":"video_transient","unit":"frame_object","scope_rules":["phone","qr_code"]},
+    {"id":"audio_digits","kind":"audio","source_kind":"sapi","generator":"audio_digits","unit":"spoken_entity","scope_rules":["phone"]},
+    {"id":"audio_repeated_zero","kind":"audio","source_kind":"sapi","generator":"audio_repeated_zero","unit":"spoken_entity","scope_rules":["phone"]},
+    {"id":"audio_silence","kind":"audio","source_kind":"synthetic","generator":"audio_silence","unit":"spoken_entity","scope_rules":["phone"]}
+  ]
+}
