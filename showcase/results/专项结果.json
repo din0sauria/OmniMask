@@ -1,0 +1,665 @@
+{
+  "metrics": {
+    "development": {
+      "positive_total": 18,
+      "before_exact": 12,
+      "after_exact": 14,
+      "negative_total": 2,
+      "before_negative_false_positive": 0,
+      "after_negative_false_positive": 0
+    },
+    "holdout": {
+      "positive_total": 12,
+      "before_exact": 5,
+      "after_exact": 5,
+      "negative_total": 2,
+      "before_negative_false_positive": 0,
+      "after_negative_false_positive": 0
+    },
+    "regression": {
+      "positive_total": 2,
+      "before_exact": 1,
+      "after_exact": 2,
+      "negative_total": 0,
+      "before_negative_false_positive": 0,
+      "after_negative_false_positive": 0
+    },
+    "negative_challenge": {
+      "positive_total": 0,
+      "before_exact": 0,
+      "after_exact": 0,
+      "negative_total": 2,
+      "before_negative_false_positive": 0,
+      "after_negative_false_positive": 0
+    }
+  },
+  "rows": 38,
+  "pass": 27,
+  "fail": 11,
+  "new_regressions": [],
+  "failures": [
+    {
+      "id": "D02_s0p8",
+      "expected": [
+        "13911112222"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼139111112222",
+        "以上號碼僅用於系統測試"
+      ],
+      "review_candidates": 1
+    },
+    {
+      "id": "D02_s1p2",
+      "expected": [
+        "13911112222"
+      ],
+      "predicted": [],
+      "transcript": [
+        "请记录测试手机号码1391112222",
+        "以上号码简用于系统测试"
+      ],
+      "review_candidates": 1
+    },
+    {
+      "id": "D06_s0p8",
+      "expected": [
+        "13712223334"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼,1371223334,以上號碼僅用於系統測試。"
+      ],
+      "review_candidates": 1
+    },
+    {
+      "id": "D06_s1p2",
+      "expected": [
+        "13712223334"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼1371223334",
+        "以上號碼解用於系統測試"
+      ],
+      "review_candidates": 1
+    },
+    {
+      "id": "H01_s1p0",
+      "expected": [
+        "13500007777"
+      ],
+      "predicted": [],
+      "transcript": [
+        "请记录测试手机号码,135007777",
+        "以上号码简用于系统测试"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H01_s1p2",
+      "expected": [
+        "13500007777"
+      ],
+      "predicted": [],
+      "transcript": [
+        "请记录测试手机号码,135007777",
+        "以上号码简用于系统测试"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H03_s1p0",
+      "expected": [
+        "18222226666"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼12222226666",
+        "以上號碼僅用於系統測試"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H03_s0p8",
+      "expected": [
+        "18222226666"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼12222226666",
+        "以上號碼僅用於系統測試"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H03_s1p2",
+      "expected": [
+        "18222226666"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼12222226666",
+        "以上號碼僅用於系統測試"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H04_s1p0",
+      "expected": [
+        "19988889999"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼199-888-999",
+        "以上號碼建用於系統測試"
+      ],
+      "review_candidates": 0
+    },
+    {
+      "id": "H04_s0p8",
+      "expected": [
+        "19988889999"
+      ],
+      "predicted": [],
+      "transcript": [
+        "請記錄測試手機號碼199-888-9999",
+        "以上號碼僅用於系統測試"
+      ],
+      "review_candidates": 1
+    }
+  ],
+  "backend_tests": "162 passed, 7 existing AST deprecation warnings, 10.74 seconds",
+  "live_cases": {
+    "R_A05_s0p8": {
+      "status": "pass",
+      "task_id": "0e9885e65cfa",
+      "actual": {
+        "complete_numbers": [
+          "13800138000"
+        ],
+        "mute_checks": [
+          {
+            "start": 1.7899773242630386,
+            "end": 7.010022675736962,
+            "all_channels_max_abs": 0
+          }
+        ],
+        "pending_mask_http": 409,
+        "confidence": 0.65,
+        "precision": "segment",
+        "preview_export_identical": true,
+        "duration_error": 0.0,
+        "outside_after_last_mute_rms": 0.06567448414938186
+      }
+    },
+    "R_A05_s1p0": {
+      "status": "pass",
+      "task_id": "bbb359460106",
+      "actual": {
+        "complete_numbers": [
+          "13800138000"
+        ],
+        "mute_checks": [
+          {
+            "start": 0.0,
+            "end": 5.650022675736961,
+            "all_channels_max_abs": 0
+          }
+        ],
+        "pending_mask_http": 409,
+        "confidence": 0.65,
+        "precision": "segment",
+        "preview_export_identical": true,
+        "duration_error": 0.0,
+        "outside_after_last_mute_rms": 0.0638716937204214
+      }
+    },
+    "D02_s1p0": {
+      "status": "pass",
+      "task_id": "986ed315e261",
+      "actual": {
+        "complete_numbers": [
+          "13911112222"
+        ],
+        "mute_checks": [
+          {
+            "start": 0.0,
+            "end": 5.330022675736961,
+            "all_channels_max_abs": 0
+          }
+        ],
+        "pending_mask_http": 409,
+        "confidence": 0.65,
+        "precision": "segment",
+        "preview_export_identical": true,
+        "duration_error": 0.0,
+        "outside_after_last_mute_rms": 0.06443332791949818
+      }
+    },
+    "D04_s1p0": {
+      "status": "pass",
+      "task_id": "393caba9682b",
+      "actual": {
+        "complete_numbers": [
+          "18888881234"
+        ],
+        "mute_checks": [
+          {
+            "start": 0.0,
+            "end": 8.190022675736962,
+            "all_channels_max_abs": 0
+          }
+        ],
+        "pending_mask_http": 409,
+        "confidence": 0.65,
+        "precision": "segment",
+        "preview_export_identical": true,
+        "duration_error": 0.0,
+        "outside_after_last_mute_rms": 1.1515623265543912e-05
+      }
+    },
+    "X10": {
+      "status": "pass",
+      "task_id": "feabbbefd9ed",
+      "actual": {
+        "no_invented_complete_mobile": true,
+        "review_candidates_allowed": true,
+        "candidate_count": 1
+      }
+    },
+    "X12": {
+      "status": "pass",
+      "task_id": "9ce194f3ab9c",
+      "actual": {
+        "no_invented_complete_mobile": true,
+        "review_candidates_allowed": true,
+        "candidate_count": 1
+      }
+    },
+    "A01": {
+      "status": "pass",
+      "task_id": "554035f640a3",
+      "actual": {
+        "transcript": [
+          {
+            "start": 0.0,
+            "end": 1.82,
+            "text": "測試聯繫電話式",
+            "words": [
+              {
+                "start": 0.0,
+                "end": 0.3,
+                "text": "測"
+              },
+              {
+                "start": 0.3,
+                "end": 0.58,
+                "text": "試"
+              },
+              {
+                "start": 0.58,
+                "end": 0.82,
+                "text": "聯"
+              },
+              {
+                "start": 0.82,
+                "end": 1.06,
+                "text": "繫"
+              },
+              {
+                "start": 1.06,
+                "end": 1.28,
+                "text": "電"
+              },
+              {
+                "start": 1.28,
+                "end": 1.54,
+                "text": "話"
+              },
+              {
+                "start": 1.54,
+                "end": 1.82,
+                "text": "式"
+              }
+            ]
+          },
+          {
+            "start": 1.82,
+            "end": 3.08,
+            "text": "139",
+            "words": [
+              {
+                "start": 1.82,
+                "end": 2.56,
+                "text": "13"
+              },
+              {
+                "start": 2.56,
+                "end": 3.08,
+                "text": "9"
+              }
+            ]
+          },
+          {
+            "start": 3.08,
+            "end": 4.48,
+            "text": "1234",
+            "words": [
+              {
+                "start": 3.08,
+                "end": 3.84,
+                "text": "12"
+              },
+              {
+                "start": 3.84,
+                "end": 4.48,
+                "text": "34"
+              }
+            ]
+          },
+          {
+            "start": 4.48,
+            "end": 5.98,
+            "text": "5678",
+            "words": [
+              {
+                "start": 4.48,
+                "end": 5.44,
+                "text": "56"
+              },
+              {
+                "start": 5.44,
+                "end": 5.98,
+                "text": "78"
+              }
+            ]
+          },
+          {
+            "start": 6.76,
+            "end": 9.24,
+            "text": "請檢查這個測試號碼",
+            "words": [
+              {
+                "start": 6.76,
+                "end": 7.32,
+                "text": "請"
+              },
+              {
+                "start": 7.32,
+                "end": 7.58,
+                "text": "檢"
+              },
+              {
+                "start": 7.58,
+                "end": 7.8,
+                "text": "查"
+              },
+              {
+                "start": 7.8,
+                "end": 8.22,
+                "text": "這個"
+              },
+              {
+                "start": 8.22,
+                "end": 8.58,
+                "text": "測"
+              },
+              {
+                "start": 8.58,
+                "end": 8.78,
+                "text": "試"
+              },
+              {
+                "start": 8.78,
+                "end": 9.02,
+                "text": "號"
+              },
+              {
+                "start": 9.02,
+                "end": 9.24,
+                "text": "碼"
+              }
+            ]
+          }
+        ],
+        "interval_checks": [
+          {
+            "start": 1.82,
+            "end": 5.98,
+            "max_abs_all_channels": 0.0
+          }
+        ],
+        "duration_error_seconds": 0.0,
+        "output_channels": 1
+      }
+    },
+    "A04": {
+      "status": "pass",
+      "task_id": "aeda5d2bc006",
+      "actual": {
+        "pii_findings": 0,
+        "source_peak_hz": 440.0,
+        "output_peak_hz": 554.3333333333333,
+        "duration_error_seconds": 0.0,
+        "channels": 2,
+        "policy_id": "3e24af55"
+      }
+    },
+    "V01": {
+      "status": "pass",
+      "task_id": "38bdf547224d",
+      "actual": {
+        "frame_count": 31,
+        "frames_scanned": 31,
+        "known_independent_region_checks": [
+          {
+            "frame": 0,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 1,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 2,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 3,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 4,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 5,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 6,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 7,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 8,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 9,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 10,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 11,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 12,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 13,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 14,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 15,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 16,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 17,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 18,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 19,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 20,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 21,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 22,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 23,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 24,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 25,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 26,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 27,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 28,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 29,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          },
+          {
+            "frame": 30,
+            "qr_inner_max": 0,
+            "phone_inner_max": 0
+          }
+        ],
+        "duration_error_seconds": 0.0,
+        "output_audio_tracks": 2
+      }
+    },
+    "V04": {
+      "status": "pass",
+      "task_id": "d67a750ea040",
+      "actual": {
+        "two_track_task_id": "38bdf547224d",
+        "audition_tracks": [
+          {
+            "index": 0,
+            "duration": 10.240226757369614,
+            "rms": 0.07262016238077644,
+            "sha256": "d72a4b3659acf52a1031a2e34b87d06b98394c3a3586bf92fd52d116873dd726"
+          },
+          {
+            "index": 1,
+            "duration": 5.953378684807256,
+            "rms": 0.09560861771485595,
+            "sha256": "42e418e17db46779424262d251e4f2cb1b4d0e4e9366f776bd5b0bf3c989ebd7"
+          }
+        ],
+        "mute_checks": [
+          {
+            "track": 0,
+            "start": 1.86,
+            "end": 5.96,
+            "max_abs": 0.0
+          }
+        ],
+        "second_track_correlation": 0.9997194878629612,
+        "no_audio_output_tracks": 0,
+        "no_audio_decoded_frames": 31
+      }
+    }
+  },
+  "health": {
+    "http://127.0.0.1:3000": 200,
+    "http://127.0.0.1:8000/api/health": 200
+  },
+  "source_hashes_unchanged": 17,
+  "python": "3.12.16 (main, Nov 11 2026, 00:20:04) [MSC v.1944 64 bit (AMD64)]",
+  "packages": {
+    "faster-whisper": "1.2.1",
+    "ctranslate2": "4.9.0",
+    "numpy": "2.5.4"
+  },
+  "device": "cpu",
+  "compute_type": "int8",
+  "model": "local faster-whisper-base",
+  "protocol_source_unchanged_since_freeze": true
+}

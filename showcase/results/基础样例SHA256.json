@@ -1,0 +1,104 @@
+[
+  {
+    "file": "samples/01_text_positive.txt",
+    "sha256": "734864ecec9a9162cf6f4f73c36e353d63c3fe148603a2e6a3f8622e9e9fcda7",
+    "bytes": 64,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/02_text_negative.txt",
+    "sha256": "f18343b3d933658d6fc9c5610c739889ec2d64348b1e1e8bbb9e68bd1d666dc0",
+    "bytes": 69,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/03_code_positive.py",
+    "sha256": "7a8da4045166304bac8c891b0b8c6199193392ad40022bf62c9ef848080b5da8",
+    "bytes": 46,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/04_image.png",
+    "sha256": "6bdea9a801e32761ae3143e0d9ce206b442e86d28a5198d522cfc5cbc29469b6",
+    "bytes": 7514,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/05_audio_digits.wav",
+    "sha256": "c4be1716e3d7545a5b73963b18a3ed0d98741d5037e5dac81e40b77e779f3d5b",
+    "bytes": 451640,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/06_audio_repeated_zero.wav",
+    "sha256": "67c758e4b4f5a357de19ebb029a63852cd3fc4e53e360d5c6f3a7343390dbb44",
+    "bytes": 415312,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/07_audio_silence.wav",
+    "sha256": "d303811b8c84619667cd0501342f84ec6cbe69f7aa3856dcf52fabda374c92b8",
+    "bytes": 96044,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/08_video_two_tracks.mp4",
+    "sha256": "be7a58a82bb88638188bffe4c8d4ddc9a77d814b66adf3c0c8385d08f0d01753",
+    "bytes": 136929,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/09_video_no_audio.mp4",
+    "sha256": "200106d9cb58acb655e169bfa20fd9e7ef7cf9fbf95927a264271c68ffda82a0",
+    "bytes": 15166,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/10_video_transient.mp4",
+    "sha256": "1fe9bad498a3e32345f97a18707aae81b361b0964f34dca38fa3badc1999933b",
+    "bytes": 20908,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/11_13800138000_metadata.txt",
+    "sha256": "63aad63206de461aa6678cfe0f78feb1f5b2b25a19533f5d1b4439da9b911824",
+    "bytes": 48,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/12_source_change.txt",
+    "sha256": "056cf04e99d9a7c401e0da86601e784d1544e14c58f3d3468f233b0c61b5469a",
+    "bytes": 35,
+    "intentional_mutation_case": true
+  },
+  {
+    "file": "samples/13_custom_rule.py",
+    "sha256": "e81f77809c4f7c311971f9c6867c9e39222e9d060e1d333183e8b8ff891d4376",
+    "bytes": 29,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/14_tone_440_stereo.wav",
+    "sha256": "d6e8187381ebbbc39b4f2147111be132a08421d95eb3bce8ca099ff022a238fb",
+    "bytes": 529244,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/15_broken.wav",
+    "sha256": "31e6f0667bb4eb2e85b8f9a3bdc12930dbaae91f4621e8c6dd0ede8389080ae1",
+    "bytes": 50,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/16_mixed_failure/broken.wav",
+    "sha256": "31e6f0667bb4eb2e85b8f9a3bdc12930dbaae91f4621e8c6dd0ede8389080ae1",
+    "bytes": 50,
+    "intentional_mutation_case": false
+  },
+  {
+    "file": "samples/16_mixed_failure/valid.txt",
+    "sha256": "734864ecec9a9162cf6f4f73c36e353d63c3fe148603a2e6a3f8622e9e9fcda7",
+    "bytes": 64,
+    "intentional_mutation_case": false
+  }
+]
