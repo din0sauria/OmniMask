@@ -2,11 +2,14 @@ import json
 import os
 import time
 import uuid
+from threading import RLock
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .config import TASKS_DIR
+
+_json_lock = RLock()
 
 
 def now() -> str:
@@ -22,10 +25,16 @@ def task_dir(task_id: str) -> Path:
 
 
 def read_json(path: Path, default: Any = None) -> Any:
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
+    with _json_lock:
+        for attempt in range(8):
+            try:
+                return json.loads(Path(path).read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return default
+            except (PermissionError, json.JSONDecodeError):
+                if attempt == 7:
+                    raise
+                time.sleep(0.025 * (attempt + 1))
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -34,17 +43,18 @@ def write_json(path: Path, data: Any) -> None:
     text = json.dumps(data, ensure_ascii=False, indent=2)
     tmp = path.with_suffix(f"{path.suffix}.{uuid.uuid4().hex[:8]}.tmp")
     tmp.write_text(text, encoding="utf-8")
-    for i in range(8):
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if i == 7:
-                # Windows may briefly lock the target (AV/indexer); fall back to direct write.
-                path.write_text(text, encoding="utf-8")
-                tmp.unlink(missing_ok=True)
-                return
-            time.sleep(0.05 * (i + 1))
+    try:
+        with _json_lock:
+            for i in range(8):
+                try:
+                    os.replace(tmp, path)
+                    return
+                except PermissionError:
+                    if i == 7:
+                        raise
+                    time.sleep(0.05 * (i + 1))
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def load_task(task_id: str) -> dict | None:
