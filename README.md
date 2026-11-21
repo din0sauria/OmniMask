@@ -68,6 +68,28 @@ npm run build
 npm run start
 ```
 
+### 一键启动 / 停止
+
+根目录提供 `start.ps1`（自动装依赖并启动前后端）与 `stop.ps1`（只停止本脚本启动的进程）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ./start.ps1 -NoInstall -NoBrowser
+powershell -NoProfile -ExecutionPolicy Bypass -File ./stop.ps1
+```
+
+`start.ps1` 支持 `-ApiPort` / `-WebPort` 切换端口；FFmpeg/FFprobe 可放 PATH、`.tools/ffmpeg/`，或通过 `OMNIMASK_FFMPEG` / `OMNIMASK_FFPROBE` 指定绝对路径。
+
+### 本地 ASR 模型（音频/视频语音转写）
+
+ASR 不再静默自动下载。需先显式准备模型（约 148MB），再启动服务：
+
+```powershell
+cd backend
+.venv/Scripts/python.exe scripts/download_asr.py
+```
+
+默认下载到 `models/faster-whisper-base`；也可用环境变量 `OMNIMASK_ASR_MODEL` 指向已有模型目录（需含 `model.bin`）。未配置时音频/视频转写会报“未配置本地 ASR 模型”，不会偷偷联网下载。
+
 ## 使用流程
 
 1. 工作台填写任务名称、操作人、数据用途；默认值：任务名取路径名、操作人取当前系统用户、用途为「内部代码安全检查」、策略为标准脱敏。
@@ -92,7 +114,7 @@ npm run start
 
 - **文本 PII**：内置正则（手机/身份证/邮箱/银行卡含校验、姓名/地址轻量规则）开箱即用；可选 HaS_Text NER 增强。
 - **图像**：人脸（OpenCV Haar）、二维码（OpenCV）、OCR（rapidocr）→ 文本 PII；可选 HaS_Image YOLO 分割增强（21 类）。需安装媒体依赖。
-- **音频**：ASR（faster-whisper，首次自动下载模型）→ 文本 PII → 静音；变声（pitch / robot）。
+- **音频**：ASR（faster-whisper，需先显式下载模型，见「本地 ASR 模型」）→ 文本 PII → 静音；变声（pitch / robot）。
 - **视频**：抽帧走图像检测 + 音轨走音频检测（需 ffmpeg）；脱敏输出保留音轨，敏感片段静音/变声。
 
 媒体依赖（opencv / rapidocr / faster-whisper / soundfile / ultralytics / llama-cpp）已作为标准依赖随 `uv sync --group media` 一并安装，一键脚本 `start.ps1` 也会自动装齐；缺失时各模态会优雅降级，代码与文本 PII 不受影响。
@@ -135,11 +157,18 @@ Windows 上 `llama-cpp-python` 无 PyPI 预编译包，已把 CPU wheel 固化�
 | GET | `/api/tasks/{id}/files/{file_id}` | 原始 / 脱敏预览 |
 | POST | `/api/tasks/{id}/review` | 审核（接受 / 忽略 / 修改方式） |
 | POST | `/api/tasks/{id}/mask` | 计算脱敏结果（不写源文件） |
+| POST | `/api/tasks/{id}/cancel` | 取消运行/排队中的任务 |
+| GET | `/api/tasks/{id}/files/{file_id}/image` · `/audio` · `/video` | 原始媒体预览 |
+| GET | `/api/tasks/{id}/files/{file_id}/download` | 下载原始 / 脱敏文件 |
 | GET | `/api/tasks/{id}/mapping` | 下载映射表（JSON，实时生成） |
 | POST | `/api/tasks/{id}/restore` | 使用映射表还原 |
 | GET | `/api/tasks/{id}/restore/download` | 下载还原包（临时生成） |
 | GET | `/api/tasks/{id}/export` | 导出 ZIP（`inline=1` 供前端 fetch，`include_mapping=true` 打包映射表） |
 | GET | `/api/tasks/{id}/report` | 报告 JSON |
+| POST | `/api/quality/tasks/{id}/verify` | 对脱敏产物做残留复查（复用本地规则，仅作辅助，不保证零漏报） |
+| GET | `/api/quality/tasks/{id}/preflight` | 导出前复核（内容与元数据、未审核项门禁） |
+| GET | `/api/maintenance/storage` | 任务存储占用统计 |
+| POST | `/api/maintenance/trash` · `/restore` · `/purge` · `/clean-cache` | 任务回收站（软删 / 恢复 / 彻底清除 / 清理过期缓存） |
 | GET/POST/PUT/DELETE | `/api/policies` | 策略 CRUD |
 
 ## 项目文档
@@ -148,10 +177,17 @@ Windows 上 `llama-cpp-python` 无 PyPI 预编译包，已把 CPU wheel 固化�
 - [项目思路](doc/项目思路.md) — 需求背景、技术选型与参考项目/模型
 - [任务清单](doc/任务清单.md) — 分阶段开发进度（已全部完成）
 
+## 审核与运维
+
+- **任务队列与取消**：检测、脱敏、复查等重操作共用单后台队列，支持进度、取消与中断恢复（启动时自动恢复中断任务）。
+- **预览 / 导出一致**：预览与导出复用同一份已审核产物，并对源文件做指纹校验；源文件改动后需重新检测，不能直接导出旧版本。
+- **导出前复核（preflight）**：导出前检查未审核项、产物缓存与元数据，未通过门禁不允许导出。
+- **残留复查（verify）**：对脱敏产物再用本地规则复查并记录位置/数量，仅作辅助，不保证零漏报。
+- **回收站与缓存清理**：删除任务默认进回收站可恢复，支持彻底清除与过期缓存清理；只管理本机任务副本，不动源文件。
+
 ## 说明
 
 - 目录浏览接口为只读（列目录/文件，不读写内容）；服务只应绑定 `127.0.0.1`，不要暴露到公网。
-- 任务是同步处理的；样本仓库（10 个文件）检测约 3–5 秒，首次检测需加载 keyleak 规则与词表。
+- 重操作经单后台队列处理；样本仓库（10 个文件）检测约 3–5 秒，首次检测需加载 keyleak 规则与词表。
 - 源文件目录不会被写入。任务目录只保存 `meta.json` / `findings.json`，其中包含命中的明文密钥，请仅在受控机器上运行并注意清理。
 - 若检测后源文件被修改，预览和导出会基于当前文件内容重新定位命中位置；找不到的内容会被跳过。
-- 后续模态（文本 PII / 图像 / 音视频）在主链路稳定后按 `detect(input, policy) -> findings` / `mask(input, findings, policy) -> output` 的同样接口扩展。
