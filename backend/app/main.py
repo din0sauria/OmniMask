@@ -1,4 +1,5 @@
 import getpass
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -6,10 +7,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import fs, policies, tasks
+from .api import fs, policies, tasks, quality, maintenance
 from .core.config import DATA_DIR, KEYLEAK_DIR, ROOT
 
-app = FastAPI(title="OmniMask API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app):
+    from .services.jobs import recover_interrupted
+    recover_interrupted()
+    yield
+
+
+app = FastAPI(title="OmniMask API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +30,8 @@ app.add_middleware(
 app.include_router(tasks.router)
 app.include_router(policies.router)
 app.include_router(fs.router)
+app.include_router(quality.router)
+app.include_router(maintenance.router)
 
 
 @app.exception_handler(HTTPException)
