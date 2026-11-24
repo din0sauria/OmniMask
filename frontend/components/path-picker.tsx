@@ -277,15 +277,16 @@ export function PathPicker({ initial = "", onPick, onClose }: Props) {
             ) : (
               <>
                 <button
-                  className="btn btn-sm"
+                  className={`btn btn-sm ${selected ? "btn-primary" : ""}`}
                   onClick={() => ready && selected && onPick(selected)}
                   disabled={!ready || !selected}
+                  title={selected ? "选择当前选中的文件" : "先在列表中单击一个文件"}
                 >
                   <FileIcon size={13} />
                   选择此文件
                 </button>
                 <button
-                  className="btn btn-sm btn-primary"
+                  className={`btn btn-sm ${selected ? "" : "btn-primary"}`}
                   onClick={() => ready && current && onPick(current)}
                   disabled={!ready}
                 >

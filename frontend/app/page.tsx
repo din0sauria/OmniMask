@@ -191,7 +191,7 @@ export default function HomePage() {
     <div className="home-page">
       <section className="home-heading">
         <div>
-          <div className="eyebrow">本地隐私处理工作台</div>
+          <div className="eyebrow">面向多模态数据的隐私脱敏系统</div>
           <h1>
             让每一次分享，<em>更有把握</em>。
           </h1>
