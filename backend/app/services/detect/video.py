@@ -2,7 +2,6 @@
 import tempfile
 from pathlib import Path
 
-from ...core.config import MAX_MEDIA_BYTES
 from ..media_runtime import MediaError, MediaCancelled, check, progress, probe, video_frames, extract_track
 from .audio import detect_audio_detail
 from .image import _cv, _ocr_engine, detect_image
@@ -77,12 +76,6 @@ def detect_video_files(files, policy, context=None):
         check(context)
         try:
             path = Path(fi['abs'])
-            if path.stat().st_size > MAX_MEDIA_BYTES:
-                skipped += 1
-                msg = '文件超过媒体处理大小上限'
-                states[fi['id']] = {'state':'skipped','warnings':[msg],'metadata':{},'transcript':[]}
-                warnings.append(fi['path'] + '：' + msg)
-                continue
             hits, detail = detect_video_detail(path, policy, context)
             scanned += 1
             for hit in hits:

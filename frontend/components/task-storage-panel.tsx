@@ -93,7 +93,11 @@ export default function TaskStoragePanel({
     const available = taskIds.filter((id) =>
       rows?.some((t) => t.id === id && !t.busy),
     );
-    if (!available.length) return;
+    if (!available.length) {
+      setError("所选任务正在处理中，暂不能操作；请稍后再试。");
+      window.requestAnimationFrame(() => feedback.current?.focus());
+      return;
+    }
     setIrreversible(false);
     setConfirmation({
       operation,

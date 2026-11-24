@@ -3,7 +3,6 @@ import json
 import re
 from pathlib import Path
 
-from ...core.config import MAX_SCAN_BYTES
 from ..ingest import read_text
 from ..models import text_llm
 from .code import _is_text_file
@@ -242,11 +241,6 @@ def detect_text_files(files: list[dict], policy: dict) -> dict:
             if not _is_text_file(abs_path):
                 skipped += 1
                 detail.update(state='skipped', warnings=['未完成文本解码检查'])
-                continue
-            if abs_path.stat().st_size > MAX_SCAN_BYTES:
-                skipped += 1
-                warnings.append(f"文件过大已跳过：{f['path']}")
-                detail.update(state='skipped', warnings=['文件过大已跳过'])
                 continue
             content, _ = read_text(abs_path)
         except OSError:

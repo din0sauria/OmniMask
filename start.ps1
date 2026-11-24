@@ -10,7 +10,7 @@ foreach ($port in @($ApiPort,$WebPort)) {
 }
 if (-not $NoInstall) {
     Push-Location $be
-    try { python -m uv sync --locked --group media --group dev; if ($LASTEXITCODE -ne 0) { throw 'Backend dependency sync failed. Install uv: python -m pip install uv' } } finally { Pop-Location }
+    try { uv sync --locked --group media --group dev; if ($LASTEXITCODE -ne 0) { throw 'Backend dependency sync failed. Install uv: https://docs.astral.sh/uv/getting-started/installation/' } } finally { Pop-Location }
     if (-not (Test-Path (Join-Path $fe 'node_modules/next'))) {
         Push-Location $fe
         try { npm ci; if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency install failed' } } finally { Pop-Location }

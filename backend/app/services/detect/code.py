@@ -10,7 +10,7 @@ import warnings
 from pathlib import Path
 from urllib.parse import urlparse
 
-from ...core.config import KEYLEAK_DIR, MAX_SCAN_BYTES, RULES_FILE
+from ...core.config import KEYLEAK_DIR, RULES_FILE
 from ..ingest import read_text
 
 _lock = threading.Lock()
@@ -292,10 +292,6 @@ def detect_files(files: list[dict], policy: dict) -> dict:
         try:
             if not _is_text_file(abs_path):
                 skipped += 1
-                continue
-            if abs_path.stat().st_size > MAX_SCAN_BYTES:
-                skipped += 1
-                warnings_out.append(f"文件过大已跳过：{f['path']}")
                 continue
         except OSError:
             skipped += 1

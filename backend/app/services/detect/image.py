@@ -3,7 +3,6 @@ import functools
 import math
 from pathlib import Path
 
-from ...core.config import MAX_MEDIA_BYTES
 from ..models import image_yolo
 from .text import scan_pii
 
@@ -173,10 +172,6 @@ def detect_image_files(files: list[dict], policy: dict) -> dict:
     for f in files:
         p = Path(f["abs"])
         if not p.exists():
-            continue
-        if p.stat().st_size > MAX_MEDIA_BYTES:
-            skipped += 1
-            warnings.append(f"文件过大已跳过：{f['path']}")
             continue
         hits, w = detect_image(p, policy)
         scanned += 1

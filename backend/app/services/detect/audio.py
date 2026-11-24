@@ -4,7 +4,6 @@ import os
 import re
 from pathlib import Path
 
-from ...core.config import MAX_MEDIA_BYTES
 from ..media_runtime import MediaError, MediaCancelled, check, progress, probe
 from .text import scan_pii
 
@@ -322,12 +321,6 @@ def detect_audio_files(files, policy, context=None):
         check(context)
         path = Path(fi['abs'])
         try:
-            if path.stat().st_size > MAX_MEDIA_BYTES:
-                skipped += 1
-                msg = '文件超过媒体处理大小上限'
-                states[fi['id']] = {'state':'skipped','warnings':[msg],'metadata':{},'transcript':[]}
-                warnings.append(fi['path'] + '：' + msg)
-                continue
             hits, detail = detect_audio_detail(path, policy, context)
             scanned += 1
             for h in hits:

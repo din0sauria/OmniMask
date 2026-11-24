@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -38,9 +39,11 @@ import {
   FindingStatusPill,
   formatBytes,
   formatTime,
+  modeText as labelMode,
   RiskPill,
   StatusPill,
 } from "@/components/ui";
+import { Dropdown } from "@/components/dropdown";
 import {
   AlertIcon,
   CheckIcon,
@@ -83,21 +86,20 @@ type Busy =
   | "locate"
   | "verify";
 
-const FLOW = ["路径", "检测", "审核", "脱敏", "导出"];
+type TaskData = { task: Task; summary: Summary };
 
-function modeText(m?: string) {
-  return m === "mask"
-    ? "打码"
-    : m === "delete"
-      ? "删除"
-      : m === "replace"
-        ? "代号替换"
-        : m === "encrypt"
-          ? "实验加密"
-          : m === "offset"
-            ? "数字偏移"
-            : "打码";
-}
+type ConfirmAction =
+  | {
+      kind: "group";
+      group: ReviewGroup;
+      status: "accepted" | "rejected" | "pending";
+    }
+  | { kind: "bulk"; accept: boolean }
+  | { kind: "restore" };
+
+const FLOW = ["检测", "审核", "脱敏", "导出"];
+
+const modeText = (m?: string) => labelMode(m || "mask");
 
 function findingPos(f: Finding): string {
   if (f.start != null && f.end != null)
@@ -147,13 +149,53 @@ const MODALITY_TEXT: Record<string, string> = {
   mixed: "混合",
 };
 
+const STATUS_TEXT: Record<string, Record<string, string>> = {
+  job: {
+    queued: "排队中",
+    running: "处理中",
+    succeeded: "处理完成",
+    failed: "处理失败",
+    cancelled: "已取消",
+    interrupted: "上次任务已中断",
+  },
+  verify: {
+    running: "复查中",
+    partial: "复查不完整",
+    failed: "复查失败",
+    cancelled: "复查已取消",
+    interrupted: "复查已中断",
+  },
+  verifyFile: {
+    complete: "已检查",
+    partial: "检查不完整",
+    failed: "检查失败",
+    skipped: "已跳过",
+    not_checked: "未检查",
+  },
+  detection: {
+    complete: "已检查",
+    partial: "检查不完整",
+    failed: "检测失败",
+    skipped: "已跳过",
+    not_checked: "未检测",
+  },
+  preflight: {
+    not_run: "尚未复查",
+    complete: "已完成复查（不保证零漏检）",
+    partial: "复查不完整",
+    failed: "复查失败",
+    cancelled: "复查取消",
+    interrupted: "复查中断",
+    stale: "旧结果已失效",
+  },
+};
+
 function flowState(status: string, summary: Summary | null) {
   const masked = status === "masked" || status === "exported";
   const reviewStage = ["detected", "reviewed", "masked", "exported"].includes(
     status,
   );
   const done = [
-    true,
     reviewStage,
     reviewStage && summary
       ? summary.pending === 0 || summary.total === 0 || masked
@@ -201,11 +243,10 @@ export default function TaskPage() {
   const [preflightError, setPreflightError] = useState("");
   const [preflightRefresh, setPreflightRefresh] = useState(0);
   const exportDialog = useRef<HTMLDialogElement>(null);
-  const [groupConfirmation, setGroupConfirmation] = useState<{
-    group: ReviewGroup;
-    status: "accepted" | "rejected" | "pending";
-  } | null>(null);
-  const groupDialog = useRef<HTMLDialogElement>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+    null,
+  );
+  const confirmDialog = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [seek, setSeek] = useState<SeekRequest>();
   const [auditionTrack, setAuditionTrack] = useState<number>();
@@ -255,7 +296,7 @@ export default function TaskPage() {
     setExportOpen(false);
     setPreflight(null);
     setAcknowledged(false);
-    setGroupConfirmation(null);
+    setConfirmAction(null);
     // A task may exist even when the homepage's background-detection request
     // failed. Consume its one-time message here, including Strict Mode replay.
     let taskNotice =
@@ -361,12 +402,12 @@ export default function TaskPage() {
     else exportDialog.current?.close();
   }, [exportOpen]);
   useEffect(() => {
-    if (groupConfirmation) groupDialog.current?.showModal();
-    else groupDialog.current?.close();
-  }, [groupConfirmation]);
+    if (confirmAction) confirmDialog.current?.showModal();
+    else confirmDialog.current?.close();
+  }, [confirmAction]);
 
   useEffect(() => {
-    if (!exportOpen) return;
+    if (!exportOpen || running) return;
     let alive = true;
     setPreflightLoading(true);
     setPreflightError("");
@@ -387,20 +428,29 @@ export default function TaskPage() {
     };
   }, [
     exportOpen,
+    running,
     anonymizeMetadata,
     includeMapping,
     preflightRefresh,
     id,
     task?.revision,
+    task?.verification?.status,
+    task?.verification?.checked_at,
   ]);
 
-  async function act(kind: Busy, fn: () => Promise<void>) {
+  async function act(kind: Busy, fn: () => Promise<TaskData | void>) {
     setBusy(kind);
     setError("");
     setMsg("");
     try {
-      await fn();
-      await load();
+      const res = await fn();
+      if (res) {
+        const data = res as TaskData;
+        setTask(data.task);
+        setSummary(data.summary);
+      } else {
+        await load();
+      }
       setRefresh((n) => n + 1);
     } catch (e) {
       setError((e as Error).message);
@@ -412,15 +462,14 @@ export default function TaskPage() {
   const doDetect = () =>
     act("detect", async () => {
       const res = await detectTask(id, policyId);
-      setSummary(res.summary);
       setFileId((prev) => {
         const cur = res.task.files.find((f) => f.id === prev);
         return cur && cur.findings > 0
           ? prev
           : res.task.files.find((f) => f.findings > 0)?.id || prev;
       });
-      setTask(res.task);
       setMsg("检测任务已提交，可查看进度或取消；检测失败不会被当作无命中。");
+      return res;
     });
 
   const showPending = () =>
@@ -451,43 +500,40 @@ export default function TaskPage() {
       );
     });
 
+  const doEditOne = (
+    f: Finding,
+    patch: { status?: Finding["status"]; mode?: string },
+  ) =>
+    act("review", async () => {
+      const res = await review(id, { items: [{ id: f.id, ...patch }] });
+      setPreview((prev) =>
+        prev && {
+          ...prev,
+          findings: prev.findings.map((x) =>
+            x.id === f.id
+              ? {
+                  ...x,
+                  status: patch.status ?? x.status,
+                  mode:
+                    patch.mode === undefined
+                      ? x.mode
+                      : patch.mode === "default"
+                        ? null
+                        : (patch.mode as Finding["mode"]),
+                }
+              : x,
+          ),
+        },
+      );
+      return res;
+    });
+
   const doReviewOne = (
     f: Finding,
     status: "accepted" | "rejected" | "pending",
-  ) =>
-    act("review", async () => {
-      const res = await review(id, { items: [{ id: f.id, status }] });
-      setSummary(res.summary);
-      setPreview(
-        (prev) =>
-          prev && {
-            ...prev,
-            findings: prev.findings.map((x) =>
-              x.id === f.id ? { ...x, status } : x,
-            ),
-          },
-      );
-    });
+  ) => doEditOne(f, { status });
 
-  const doMode = (f: Finding, mode: string) =>
-    act("review", async () => {
-      const res = await review(id, { items: [{ id: f.id, mode }] });
-      setSummary(res.summary);
-      setPreview(
-        (prev) =>
-          prev && {
-            ...prev,
-            findings: prev.findings.map((x) =>
-              x.id === f.id
-                ? {
-                    ...x,
-                    mode: mode === "default" ? null : (mode as Finding["mode"]),
-                  }
-                : x,
-            ),
-          },
-      );
-    });
+  const doMode = (f: Finding, mode: string) => doEditOne(f, { mode });
 
   const doBulk = (accept: boolean) =>
     act("review", async () => {
@@ -495,18 +541,17 @@ export default function TaskPage() {
         id,
         accept ? { accept_all: true } : { reject_all: true },
       );
-      setSummary(res.summary);
       setMsg(
         accept ? "已将全部待确认结果标记为接受。" : "已忽略全部待确认结果。",
       );
+      return res;
     });
 
   const doMask = () =>
     act("mask", async () => {
       const res = await maskTask(id);
-      setSummary(res.summary);
-      setTask(res.task);
       setMsg("脱敏任务已提交，完成后可播放预览并导出同一份处理结果。");
+      return res;
     });
 
   const doExport = () => {
@@ -534,20 +579,14 @@ export default function TaskPage() {
         setAcknowledged(false);
         throw Error("处理结果已发生变化，请重新复核后再导出。");
       }
-      if (
+      const sig = (p: ExportPreflight) =>
         JSON.stringify([
-          fresh.issues,
-          fresh.verification_status,
-          fresh.metadata_candidates,
-          fresh.requires_acknowledgement,
-        ]) !==
-        JSON.stringify([
-          preflight.issues,
-          preflight.verification_status,
-          preflight.metadata_candidates,
-          preflight.requires_acknowledgement,
-        ])
-      ) {
+          p.issues,
+          p.verification_status,
+          p.metadata_candidates,
+          p.requires_acknowledgement,
+        ]);
+      if (sig(fresh) !== sig(preflight)) {
         setPreflight(fresh);
         setAcknowledged(false);
         throw Error("复查或导出提示已更新，请阅读最新结果后重新确认。");
@@ -577,14 +616,13 @@ export default function TaskPage() {
     status: "accepted" | "rejected" | "pending",
   ) =>
     act("review", async () => {
-      const result = await review(id, {
+      const res = await review(id, {
         items: groupReviewItems(group, status),
       });
-      setTask(result.task);
-      setSummary(result.summary);
       setMsg(
         `已将该组 ${group.members.length} 条原始结果标为${status === "accepted" ? "接受" : status === "rejected" ? "忽略" : "待确认"}；未改变逐帧处理范围。`,
       );
+      return res;
     });
 
   const doMapping = () =>
@@ -625,7 +663,7 @@ export default function TaskPage() {
     if (preview?.media === "video")
       setAuditionWatch({ token: Date.now(), previousJobId: task?.job?.id });
   };
-  const pick = (fid: string, forceRaw = false) => {
+  const pick = useCallback((fid: string, forceRaw = false) => {
     setActive(fid);
     setTab("original");
     const hit = preview?.findings.find((f) => f.id === fid);
@@ -653,7 +691,61 @@ export default function TaskPage() {
         .getElementById(`result-${resultId}`)
         ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 30);
-  };
+  }, [groupedReview, preview]);
+
+  const currentPreview = useMemo(
+    () => (preview?.file.id === fileId ? preview : null),
+    [preview, fileId],
+  );
+  const findings = useMemo(() => currentPreview?.findings || [], [
+    currentPreview,
+  ]);
+  const mediaGroups = useMemo(() => groupFindings(findings), [findings]);
+  const query = resultSearch.trim().toLowerCase();
+  const shown = useMemo(
+    () =>
+      findings.filter(
+        (f) =>
+          (filter === "all" || f.status === filter) &&
+          (!query ||
+            `${f.type_label} ${f.rule_name} ${f.value} ${findingPos(f)}`
+              .toLowerCase()
+              .includes(query)),
+      ),
+    [findings, filter, query],
+  );
+  const isTimedMedia =
+    currentPreview?.media === "video" || currentPreview?.media === "audio";
+  const shownGroups = useMemo(
+    () =>
+      mediaGroups.filter((group) =>
+        group.members.some(
+          (f) =>
+            (filter === "all" || f.status === filter) &&
+            (!query ||
+              `${f.type_label} ${f.rule_name} ${f.value} ${findingPos(f)}`
+                .toLowerCase()
+                .includes(query)),
+        ),
+      ),
+    [mediaGroups, filter, query],
+  );
+  const groupedView = isTimedMedia && groupedReview;
+  const shownCount = groupedView ? shownGroups.length : shown.length;
+  const visibleFiles = useMemo(
+    () =>
+      (task?.files || []).filter((f) =>
+        f.path.toLowerCase().includes(fileSearch.trim().toLowerCase()),
+      ),
+    [task, fileSearch],
+  );
+  const highlighted = useMemo(
+    () =>
+      currentPreview
+        ? renderHighlighted(currentPreview.original, findings, active, pick)
+        : null,
+    [currentPreview, findings, active, pick],
+  );
 
   if (loading) return <Empty title="正在加载任务…" />;
   if (!task || !summary) {
@@ -675,39 +767,12 @@ export default function TaskPage() {
 
   const { done, current } = flowState(task.status, summary);
   const selectedFile = task.files.find((f) => f.id === fileId);
-  const currentPreview = preview?.file.id === fileId ? preview : null;
-  const findings = currentPreview?.findings || [];
-  const mediaGroups = groupFindings(findings);
   const selectedGroup = (group: ReviewGroup) => {
     const first = group.members[0];
     pick(first.id);
     if (!first.bbox && currentPreview?.media === "video")
       audition(group.start ?? 0, group.end ?? 0, first.track_index ?? 0);
   };
-  const query = resultSearch.trim().toLowerCase();
-  const shown = findings.filter(
-    (f) =>
-      (filter === "all" || f.status === filter) &&
-      (!query ||
-        `${f.type_label} ${f.rule_name} ${f.value} ${findingPos(f)}`
-          .toLowerCase()
-          .includes(query)),
-  );
-  const isTimedMedia =
-    currentPreview?.media === "video" || currentPreview?.media === "audio";
-  const shownGroups = mediaGroups.filter((group) =>
-    group.members.some(
-      (f) =>
-        (filter === "all" || f.status === filter) &&
-        (!query ||
-          `${f.type_label} ${f.rule_name} ${f.value} ${findingPos(f)}`
-            .toLowerCase()
-            .includes(query)),
-    ),
-  );
-  const visibleFiles = task.files.filter((f) =>
-    f.path.toLowerCase().includes(fileSearch.trim().toLowerCase()),
-  );
   const detectionBlocked = task.files.some(
     (f) => f.detection?.state !== "complete",
   );
@@ -726,18 +791,11 @@ export default function TaskPage() {
       ? task.job.status
       : verification?.status;
   const verificationLabel = verification
-    ? (
-        {
-          running: "复查中",
-          complete: verification.candidate_count
-            ? "发现候选残留"
-            : "当前检测器未发现候选残留",
-          partial: "复查不完整",
-          failed: "复查失败",
-          cancelled: "复查已取消",
-          interrupted: "复查已中断",
-        } as Record<string, string>
-      )[verificationStatus || ""] || "复查状态未知"
+    ? verificationStatus === "complete"
+      ? verification.candidate_count
+        ? "发现候选残留"
+        : "当前检测器未发现候选残留"
+      : STATUS_TEXT.verify[verificationStatus || ""] || "复查状态未知"
     : "尚未复查当前产物";
   const appliedCount =
     (task.stats.mask?.findings_applied ?? 0) +
@@ -809,18 +867,18 @@ export default function TaskPage() {
         </div>
         <div className="task-actions">
           <div className="policy-select-inline">
-            <select
-              aria-label="本次检测策略"
+            <Dropdown
+              ariaLabel="本次检测策略"
               value={policyId}
-              onChange={(e) => setPolicyId(e.target.value)}
+              onChange={(v) => setPolicyId(v)}
               disabled={locked}
-            >
-              {policies.map((p) => (
-                <option key={p.id} value={p.id} disabled={p.mode === "encrypt"}>
-                  {p.name}{p.mode === "encrypt" ? "（已停用，请切换策略）" : ""}
-                </option>
-              ))}
-            </select>
+              options={policies.map((p) => ({
+                value: p.id,
+                label:
+                  p.name + (p.mode === "encrypt" ? "（已停用，请切换策略）" : ""),
+                disabled: p.mode === "encrypt",
+              }))}
+            />
             <button className="btn" onClick={doDetect} disabled={locked}>
               {busy === "detect" ? (
                 <>
@@ -964,55 +1022,49 @@ export default function TaskPage() {
           </button>
         </div>
       )}
-      {msg &&
-        !(task.job?.status === "succeeded" && msg.includes("任务已提交")) && (
-          <div
-            className="notice success"
-            role="status"
-            style={{ marginBottom: 14 }}
-          >
-            <CheckIcon />
-            {msg}
-          </div>
-        )}
+      {msg && (
+        <div
+          className="notice success"
+          role="status"
+          style={{ marginBottom: 14 }}
+        >
+          <CheckIcon />
+          {msg}
+          <button className="btn btn-sm btn-ghost" onClick={() => setMsg("")}>
+            关闭
+          </button>
+        </div>
+      )}
       {maskedDone && reversible && (
         <div className="banner">
           <ShieldIcon size={17} />
           <span>
-            文本映射与还原
-            {reversible &&
-              " 文本映射表按需生成；媒体遮挡和静音不支持逆向恢复。"}
+            文本映射与还原 文本映射表按需生成；媒体遮挡和静音不支持逆向恢复。
           </span>
-          {reversible && (
-            <label className="switch" style={{ marginLeft: "auto" }}>
-              <input
-                type="checkbox"
-                checked={includeMapping}
-                onChange={(e) => setIncludeMapping(e.target.checked)}
-              />
-              导出包包含映射表
-            </label>
-          )}
-          {reversible && (
-            <button
-              className="btn btn-sm"
-              onClick={doMapping}
-              disabled={locked}
-            >
-              <KeyIcon size={13} />
-              下载映射表
-            </button>
-          )}
-          {reversible && (
-            <button
-              className="btn btn-sm"
-              onClick={doRestore}
-              disabled={locked}
-            >
-              <RestoreIcon size={13} />
-              还原并下载
-            </button>
-          )}
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={includeMapping}
+              onChange={(e) => setIncludeMapping(e.target.checked)}
+            />
+            导出包包含映射表
+          </label>
+          <button
+            className="btn btn-sm"
+            onClick={doMapping}
+            disabled={locked}
+          >
+            <KeyIcon size={13} />
+            下载映射表
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => setConfirmAction({ kind: "restore" })}
+            disabled={locked}
+          >
+            <RestoreIcon size={13} />
+            还原并下载
+          </button>
         </div>
       )}
 
@@ -1038,17 +1090,10 @@ export default function TaskPage() {
                   : task.job.operation === "verify"
                     ? "残留复查 · "
                     : ""}
-                {{
-                  queued: "排队中",
-                  running: "处理中",
-                  succeeded:
-                    task.job.operation === "audition"
-                      ? "试听已就绪"
-                      : "处理完成",
-                  failed: "处理失败",
-                  cancelled: "已取消",
-                  interrupted: "上次任务已中断",
-                }[task.job.status] || task.job.status}
+                {task.job.operation === "audition" &&
+                task.job.status === "succeeded"
+                  ? "试听已就绪"
+                  : (STATUS_TEXT.job[task.job.status] || task.job.status)}
               </b>{" "}
               · {task.job.stage}
               {task.job.status !== "succeeded" && task.job.total > 0 && (
@@ -1135,16 +1180,8 @@ export default function TaskPage() {
                   <li key={file.file_id}>
                     <b>{file.path}</b>
                     <span>
-                      {(
-                        {
-                          complete: "已检查",
-                          partial: "检查不完整",
-                          failed: "检查失败",
-                          skipped: "已跳过",
-                          not_checked: "未检查",
-                        } as Record<string, string>
-                      )[file.status] || file.status}{" "}
-                      · 候选 {file.candidate_count ?? 0} 处
+                      {STATUS_TEXT.verifyFile[file.status] || file.status} · 候选{" "}
+                      {file.candidate_count ?? 0} 处
                     </span>
                     {file.coverage?.frames_scanned != null && (
                       <p>
@@ -1235,13 +1272,7 @@ export default function TaskPage() {
                   <span>
                     {kindLabel(f)} ·{" "}
                     {f.detection
-                      ? {
-                          complete: "已检查",
-                          partial: "检查不完整",
-                          failed: "检测失败",
-                          skipped: "已跳过",
-                          not_checked: "未检测",
-                        }[f.detection.state]
+                      ? STATUS_TEXT.detection[f.detection.state]
                       : "未检测"}
                   </span>
                   {f.findings > 0 && (
@@ -1271,10 +1302,16 @@ export default function TaskPage() {
                 {formatBytes(selectedFile.size)}
               </span>
             )}
-            <div className="tabs">
+            <div className="tabs" role="tablist" aria-label="预览视图">
               <button
+                role="tab"
+                aria-selected={tab === "original"}
                 className={`tab ${tab === "original" ? "active" : ""}`}
                 onClick={() => setTab("original")}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight")
+                    setTab("masked");
+                }}
               >
                 {currentPreview?.media === "image"
                   ? "原始图像"
@@ -1285,8 +1322,14 @@ export default function TaskPage() {
                       : "原始文本"}
               </button>
               <button
+                role="tab"
+                aria-selected={tab === "masked"}
                 className={`tab ${tab === "masked" ? "active" : ""}`}
                 onClick={() => setTab("masked")}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight")
+                    setTab("original");
+                }}
               >
                 脱敏预览
               </button>
@@ -1454,14 +1497,7 @@ export default function TaskPage() {
                   <span className="mode">{findings.length} 处检测结果</span>
                 </div>
                 <div className="code-scroll">
-                  <pre className="code">
-                    {renderHighlighted(
-                      currentPreview.original,
-                      findings,
-                      active,
-                      pick,
-                    )}
-                  </pre>
+                  <pre className="code">{highlighted}</pre>
                 </div>
               </div>
               <div
@@ -1491,7 +1527,9 @@ export default function TaskPage() {
           <div className="findings-head">
             <span className="panel-title">检测结果</span>
             <span className="badge">
-              {shown.length}/{findings.length}
+              {groupedView
+                ? `${shownCount}/${mediaGroups.length} 组`
+                : `${shownCount}/${findings.length}`}
             </span>
           </div>
           <div className="review-tools">
@@ -1505,19 +1543,20 @@ export default function TaskPage() {
                 setVisibleCount(20);
               }}
             />
-            <select
-              aria-label="检测结果审核状态"
+            <Dropdown
+              ariaLabel="检测结果审核状态"
               value={filter}
-              onChange={(e) => {
-                setFilter(e.target.value as typeof filter);
+              onChange={(v) => {
+                setFilter(v as typeof filter);
                 setVisibleCount(20);
               }}
-            >
-              <option value="all">全部状态</option>
-              <option value="pending">待确认</option>
-              <option value="accepted">已接受</option>
-              <option value="rejected">已忽略</option>
-            </select>
+              options={[
+                { value: "all", label: "全部状态" },
+                { value: "pending", label: "待确认" },
+                { value: "accepted", label: "已接受" },
+                { value: "rejected", label: "已忽略" },
+              ]}
+            />
           </div>
           {isTimedMedia && (
             <div
@@ -1558,14 +1597,18 @@ export default function TaskPage() {
               <div className="btn-row">
                 <button
                   className="btn btn-sm"
-                  onClick={() => doBulk(true)}
+                  onClick={() =>
+                    setConfirmAction({ kind: "bulk", accept: true })
+                  }
                   disabled={locked || summary.pending === 0}
                 >
                   全部接受
                 </button>
                 <button
                   className="btn btn-sm btn-ghost"
-                  onClick={() => doBulk(false)}
+                  onClick={() =>
+                    setConfirmAction({ kind: "bulk", accept: false })
+                  }
                   disabled={locked || summary.pending === 0}
                 >
                   全部忽略
@@ -1631,7 +1674,15 @@ export default function TaskPage() {
             {previewLoading ? (
               <Empty title="正在载入检测结果…" />
             ) : previewError ? (
-              <Empty title="结果暂不可用" hint="请在预览区重试加载" />
+              <div className="preview-error">
+                <Empty title="结果暂不可用" hint={previewError} />
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setRefresh((n) => n + 1)}
+                >
+                  重试
+                </button>
+              </div>
             ) : shown.length === 0 ? (
               <Empty
                 icon={<ShieldIcon size={26} />}
@@ -1650,7 +1701,7 @@ export default function TaskPage() {
                       : "检查提示后重新检测；未完成检测不能导出"
                 }
               />
-            ) : isTimedMedia && groupedReview ? (
+            ) : groupedView ? (
               shownGroups.slice(0, visibleCount).map((group) => (
                 <article
                   className={`finding review-group ${group.members.some((f) => f.id === active) ? "active" : ""}`}
@@ -1697,7 +1748,9 @@ export default function TaskPage() {
                         type="button"
                         key={status}
                         disabled={locked || group.status === status}
-                        onClick={() => setGroupConfirmation({ group, status })}
+                        onClick={() =>
+                          setConfirmAction({ kind: "group", group, status })
+                        }
                       >
                         {label}（{group.members.length}）
                       </button>
@@ -1811,23 +1864,28 @@ export default function TaskPage() {
                       </button>
                     </div>
                     {!f.media && (
-                      <select
-                        aria-label={`${f.type_label}处理方式`}
+                      <Dropdown
+                        ariaLabel={`${f.type_label}处理方式`}
                         value={f.mode || "default"}
-                        onChange={(e) => doMode(f, e.target.value)}
+                        onChange={(v) => doMode(f, v)}
                         disabled={locked}
-                      >
-                        <option value="default">跟随策略</option>
-                        <option value="mask">打码</option>
-                        <option value="delete">删除</option>
-                        <option value="replace">代号替换</option>
-                        {f.mode === "encrypt" && (
-                          <option value="encrypt" disabled>
-                            旧实验加密（已停用）
-                          </option>
-                        )}
-                        <option value="offset">数字偏移</option>
-                      </select>
+                        options={[
+                          { value: "default", label: "跟随策略" },
+                          { value: "mask", label: "打码" },
+                          { value: "delete", label: "删除" },
+                          { value: "replace", label: "代号替换" },
+                          ...(f.mode === "encrypt"
+                            ? [
+                                {
+                                  value: "encrypt",
+                                  label: "旧实验加密（已停用）",
+                                  disabled: true,
+                                },
+                              ]
+                            : []),
+                          { value: "offset", label: "数字偏移" },
+                        ]}
+                      />
                     )}
                     {f.media && (
                       <span>
@@ -1855,70 +1913,74 @@ export default function TaskPage() {
                 </div>
               ))
             )}
-            {(isTimedMedia && groupedReview
-              ? shownGroups.length
-              : shown.length) > visibleCount && (
+            {shownCount > visibleCount && (
               <div className="review-more">
                 <p>
-                  已显示{" "}
-                  {Math.min(
-                    visibleCount,
-                    isTimedMedia && groupedReview
-                      ? shownGroups.length
-                      : shown.length,
-                  )}{" "}
-                  /{" "}
-                  {isTimedMedia && groupedReview
-                    ? shownGroups.length
-                    : shown.length}{" "}
-                  {isTimedMedia && groupedReview ? "组" : "条"}
+                  已显示 {Math.min(visibleCount, shownCount)} / {shownCount}{" "}
+                  {groupedView ? "组" : "条"}
                 </p>
                 <button
                   className="btn btn-sm"
                   onClick={() => setVisibleCount((n) => n + 20)}
                 >
-                  再显示 20 {isTimedMedia && groupedReview ? "组" : "条"}
+                  再显示 20 {groupedView ? "组" : "条"}
                 </button>
               </div>
             )}
-            {shown.length > 0 &&
-              (isTimedMedia && groupedReview
-                ? shownGroups.length
-                : shown.length) <= visibleCount && (
-                <div className="review-list-end">
-                  当前筛选共 {shown.length} 条 · 已全部显示
-                </div>
-              )}
+            {shownCount > 0 && shownCount <= visibleCount && (
+              <div className="review-list-end">
+                当前筛选共 {shownCount} {groupedView ? "组" : "条"} · 已全部显示
+              </div>
+            )}
           </div>
         </aside>
       </div>
       <dialog
-        ref={groupDialog}
+        ref={confirmDialog}
         className="confirmation-dialog"
-        aria-labelledby="group-review-title"
+        aria-labelledby="confirm-action-title"
         onCancel={(event) => {
           event.preventDefault();
-          setGroupConfirmation(null);
+          setConfirmAction(null);
         }}
       >
-        {groupConfirmation && (
+        {confirmAction && (
           <>
-            <h2 id="group-review-title">确认整组审核操作</h2>
-            <p>
-              将把「{groupConfirmation.group.label}」组的全部{" "}
-              {groupConfirmation.group.members.length} 条原始结果标为
-              {groupConfirmation.status === "accepted"
-                ? "接受"
-                : groupConfirmation.status === "rejected"
-                  ? "忽略"
-                  : "待确认"}
-              。包含当前筛选外的成员；混合状态也会被覆盖。每帧定位不会改变。
-            </p>
+            <h2 id="confirm-action-title">
+              {confirmAction.kind === "restore"
+                ? "确认还原并下载"
+                : confirmAction.kind === "bulk"
+                  ? "确认批量审核"
+                  : "确认整组审核操作"}
+            </h2>
+            {confirmAction.kind === "group" ? (
+              <p>
+                将把「{confirmAction.group.label}」组的全部{" "}
+                {confirmAction.group.members.length} 条原始结果标为
+                {confirmAction.status === "accepted"
+                  ? "接受"
+                  : confirmAction.status === "rejected"
+                    ? "忽略"
+                    : "待确认"}
+                。包含当前筛选外的成员；混合状态也会被覆盖。每帧定位不会改变。
+              </p>
+            ) : confirmAction.kind === "bulk" ? (
+              <p>
+                将把整个任务的 {summary.pending}{" "}
+                条待确认结果全部标为
+                {confirmAction.accept ? "接受" : "忽略"}
+                ，影响所有文件，包括当前筛选与搜索之外的结果；已审核项保持不变。
+              </p>
+            ) : (
+              <p>
+                将按映射表还原文本文件并下载还原包。还原包包含明文敏感数据，不是脱敏产物，请确认保存位置安全并妥善保管。
+              </p>
+            )}
             <div className="btn-row">
               <button
                 type="button"
                 className="btn"
-                onClick={() => setGroupConfirmation(null)}
+                onClick={() => setConfirmAction(null)}
               >
                 取消
               </button>
@@ -1926,12 +1988,19 @@ export default function TaskPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  const value = groupConfirmation;
-                  setGroupConfirmation(null);
-                  void reviewGroup(value.group, value.status);
+                  const value = confirmAction;
+                  setConfirmAction(null);
+                  if (value.kind === "group")
+                    void reviewGroup(value.group, value.status);
+                  else if (value.kind === "bulk") void doBulk(value.accept);
+                  else void doRestore();
                 }}
               >
-                确认更新整组
+                {confirmAction.kind === "restore"
+                  ? "确认还原"
+                  : confirmAction.kind === "bulk"
+                    ? "确认批量处理"
+                    : "确认更新整组"}
               </button>
             </div>
           </>
@@ -1982,17 +2051,7 @@ export default function TaskPage() {
             <>
               <p className="quality-note">
                 产物版本 {preflight.revision} · 复查状态{" "}
-                {(
-                  {
-                    not_run: "尚未复查",
-                    complete: "已完成复查（不保证零漏检）",
-                    partial: "复查不完整",
-                    failed: "复查失败",
-                    cancelled: "复查取消",
-                    interrupted: "复查中断",
-                    stale: "旧结果已失效",
-                  } as Record<string, string>
-                )[preflight.verification_status] ||
+                {STATUS_TEXT.preflight[preflight.verification_status] ||
                   preflight.verification_status}
               </p>
               <ul className="export-issues">
@@ -2065,10 +2124,7 @@ export default function TaskPage() {
             type="button"
             className="btn"
             disabled={locked || policyChanged}
-            onClick={() => {
-              setExportOpen(false);
-              void doVerify();
-            }}
+            onClick={() => void doVerify()}
           >
             先做残留复查
           </button>

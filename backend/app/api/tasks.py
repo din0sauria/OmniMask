@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
-from ..core.config import MAX_FILES, MAX_SCAN_BYTES, SKIP_DIRS, TASKS_DIR
+from ..core.config import SKIP_DIRS, TASKS_DIR
 from ..core.storage import (
     load_findings, load_task, new_id, now, read_json, save_findings, save_task, task_dir,
 )
@@ -52,7 +52,7 @@ def _prune(task_id: str) -> None:
 def _new_file(rel: str, abs_path: Path) -> dict:
     text = kind_of(rel) in ("code", "text") and _is_text_file(abs_path)
     lines = 0
-    if text and abs_path.stat().st_size <= MAX_SCAN_BYTES:
+    if text:
         try:
             content, _ = read_text(abs_path)
             lines = count_lines(content)
@@ -70,7 +70,7 @@ def _new_file(rel: str, abs_path: Path) -> dict:
     }
 
 
-def _collect(sp: Path, warnings: list[str]) -> list[dict]:
+def _collect(sp: Path) -> list[dict]:
     infos: list[dict] = []
     if sp.is_file():
         infos.append(_new_file(sp.name, sp))
@@ -79,9 +79,6 @@ def _collect(sp: Path, warnings: list[str]) -> list[dict]:
     for root, dirs, names in os.walk(sp):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".git")]
         for name in names:
-            if len(infos) >= MAX_FILES:
-                warnings.append(f"文件数量超过 {MAX_FILES}，仅导入前 {MAX_FILES} 个")
-                return infos
             p = Path(root) / name
             try:
                 infos.append(_new_file(p.relative_to(sp).as_posix(), p))
@@ -113,10 +110,12 @@ def _create_task(body: TaskCreateIn):
         raise HTTPException(400, f"不是文件或目录：{raw}")
 
     policy = get_policy(body.policy_id)
+    if body.voice_change is not None:
+        policy["voice_change"] = body.voice_change
     task_id = new_id()
     task_dir(task_id).mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
-    infos = _collect(sp, warnings)
+    infos = _collect(sp)
     if not infos:
         raise HTTPException(400, "该路径下没有可检测的文件")
 
@@ -139,6 +138,8 @@ def _create_task(body: TaskCreateIn):
         "root": str(sp.parent if source == "file" else sp),
         "modality": modality,
     }
+    if body.voice_change is not None:
+        task["voice_change"] = body.voice_change
     save_task(task)
     return {"code": 0, "msg": "ok", "data": {"task": _public(task), "warnings": warnings}}
 

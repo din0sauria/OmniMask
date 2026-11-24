@@ -66,6 +66,7 @@ class TaskCreateIn(BaseModel):
     operator: str = ""
     purpose: str = ""
     modality: str = ""
+    voice_change: Literal["", "pitch", "robot"] | None = None
 
 
 class Task(BaseModel):

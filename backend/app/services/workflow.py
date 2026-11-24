@@ -9,7 +9,6 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from ..core.storage import load_task, load_findings, save_findings, task_dir, now
-from ..core.config import MAX_MEDIA_BYTES, MAX_SCAN_BYTES
 from .jobs import save_current
 from .media import kind_of
 from .report import build_report, render_markdown, summarize
@@ -59,6 +58,8 @@ def detect_task(task_id: str, policy_id: str | None, context):
     if policy_id:
         task['policy'] = get_policy(policy_id)
         task['policy_id'] = task['policy']['id']
+    if task.get('voice_change') is not None:
+        task['policy']['voice_change'] = task['voice_change']
     invalidate(task)
     task['status'] = 'created'
     task.pop('detection_version', None)
@@ -76,14 +77,6 @@ def detect_task(task_id: str, policy_id: str | None, context):
         context.update('检测文件', index, len(task['files']))
         kind = kind_of(fi['path'])
         try:
-            limit = MAX_MEDIA_BYTES if kind in ('image', 'audio', 'video') else MAX_SCAN_BYTES
-            if Path(fi['abs']).stat().st_size > limit:
-                fi['detection'] = {'state': 'skipped', 'warnings': ['超过该模态处理大小上限'], 'metadata': {}, 'transcript': []}
-                fi['findings'] = 0
-                skipped += 1
-                warnings.append(fi['path'] + '：超过处理大小上限，未检查')
-                save_current(task)
-                continue
             before = fingerprint(Path(fi['abs']), context)
             if kind in ('audio', 'video'):
                 from .original_preview import prepare_original

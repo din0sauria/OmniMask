@@ -101,7 +101,9 @@ export function PathPicker({ initial = "", onPick, onClose }: Props) {
   }, []);
 
   const current = data?.path || "";
-  const ready = !!data && !loading && !error && manual.trim() === current;
+  const typed = manual.trim();
+  const stale = !!typed && typed !== current;
+  const ready = !!data && !loading && !error && !stale;
   const entries = (data?.entries || []).filter(
     (e) => !filter || e.name.toLowerCase().includes(filter.toLowerCase()),
   );
@@ -264,22 +266,34 @@ export function PathPicker({ initial = "", onPick, onClose }: Props) {
             )}
           </div>
           <div className="btn-row">
-            <button
-              className="btn btn-sm"
-              onClick={() => ready && selected && onPick(selected)}
-              disabled={!ready || !selected}
-            >
-              <FileIcon size={13} />
-              选择此文件
-            </button>
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => ready && current && onPick(current)}
-              disabled={!ready}
-            >
-              <FolderIcon size={13} />
-              选择此目录
-            </button>
+            {stale ? (
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => load(typed)}
+                disabled={loading}
+              >
+                前往输入路径
+              </button>
+            ) : (
+              <>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => ready && selected && onPick(selected)}
+                  disabled={!ready || !selected}
+                >
+                  <FileIcon size={13} />
+                  选择此文件
+                </button>
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={() => ready && current && onPick(current)}
+                  disabled={!ready}
+                >
+                  <FolderIcon size={13} />
+                  选择此目录
+                </button>
+              </>
+            )}
             <button className="btn btn-sm btn-ghost" onClick={onClose}>
               取消
             </button>

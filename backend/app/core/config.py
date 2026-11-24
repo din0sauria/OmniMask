@@ -16,9 +16,6 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
 
-MAX_MEDIA_BYTES = 500 * 1024 * 1024
-MAX_SCAN_BYTES = 1024 * 1024
-MAX_FILES = 500
 SKIP_DIRS = {".git", ".svn", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next"}
 
 for d in (DATA_DIR, TASKS_DIR):

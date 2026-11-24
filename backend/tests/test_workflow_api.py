@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.core import storage
 from app.api import tasks
-from app.services import jobs, policy, workflow
+from app.services import jobs, policy
 from app.main import app
 
 
@@ -213,17 +213,6 @@ def test_reversible_multiple_files_preview_uses_exact_cached_tokens(client, tmp_
             pv = client.get(f"/api/tasks/{task}/files/{fi['id']}").json()['data']
             assert z.read('masked/' + fi['path']).decode() == pv['masked']
     assert [f['findings'] for f in storage.load_task(task)['files']] == counts
-
-
-def test_oversize_is_skipped_before_hash_or_transcode(client, tmp_path, monkeypatch):
-    source = tmp_path / 'oversize.wav'
-    source.write_bytes(b'x' * 20)
-    task = create(client, source)
-    monkeypatch.setattr(workflow, 'MAX_MEDIA_BYTES', 10)
-    monkeypatch.setattr(workflow, 'fingerprint', lambda *a: (_ for _ in ()).throw(AssertionError('must not hash oversized file')))
-    info = detect(client, task)
-    assert info['files'][0]['detection']['state'] == 'skipped'
-    assert info['stats']['skipped'] == 1
 
 
 def test_policy_crud_and_reversible_restore_regression(client, tmp_path):

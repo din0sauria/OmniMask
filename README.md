@@ -81,14 +81,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./stop.ps1
 
 ### 本地 ASR 模型（音频/视频语音转写）
 
-ASR 不再静默自动下载。需先显式准备模型（约 148MB），再启动服务：
+ASR 不再静默自动下载。需先显式准备模型（约 148MB），再启动服务。两种方式任选：
 
 ```powershell
+# 方式一：modelscope（国内可直连，推荐；同时下载 ASR 与可选 HaS 增强模型）
+./downmodels.ps1
+```
+
+```powershell
+# 方式二：HuggingFace（需能访问 huggingface.co）
 cd backend
 .venv/Scripts/python.exe scripts/download_asr.py
 ```
 
-默认下载到 `models/faster-whisper-base`；也可用环境变量 `OMNIMASK_ASR_MODEL` 指向已有模型目录（需含 `model.bin`）。未配置时音频/视频转写会报“未配置本地 ASR 模型”，不会偷偷联网下载。
+默认下载到 `models/faster-whisper-base`；也可用环境变量 `OMNIMASK_ASR_MODEL` 指向已有模型目录（需含 `model.bin`）。`start.ps1` 检测到该目录后会自动注入 `OMNIMASK_ASR_MODEL`。未配置时音频/视频转写会报“未配置本地 ASR 模型”，不会偷偷联网下载。
 
 ## 使用流程
 
@@ -104,8 +110,8 @@ cd backend
 - 规则：`keyleak/data/regex/merged_rules.json`（1124 条），按文件原文逐条正则匹配。
 - 过滤：复用 keyleak 的 `key_value_filter_single`、`combine_substr`、`check_multi_reason`、`filter_strings`（多语言字符串提取），并缓存其反复加载的词表。
 - 输出：文件、起止行列、命中内容、规则名、类型、置信度、风险等级。
-- 目录导入会跳过 `.git`、`node_modules`、`__pycache__`、`.venv` 等目录；最多 500 个文件，导入不限文件大小。
-- 代码/文本检测跳过二进制文件与大于 1 MB 的文本；图像/音频/视频检测上限 500 MB。
+- 目录导入会跳过 `.git`、`node_modules`、`__pycache__`、`.venv` 等目录；导入不限文件数量与大小。
+- 代码/文本检测仅跳过二进制文件；图像/音频/视频与文本检测不设文件大小上限。
 - LLM 辅助检测（`keyleak/llmdetect.py`）未启用，避免引入 Qwen 与 GPU 依赖。
 
 ## 模态与可选依赖

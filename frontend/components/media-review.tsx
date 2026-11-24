@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Finding, ManualFinding, ReviewEdit, TaskFile } from "@/lib/types";
+import { Dropdown } from "./dropdown";
 
 export type SeekRequest = { token: number; start: number; end?: number };
 export function MediaPlayer({
@@ -273,16 +274,20 @@ export function MediaEditor({
       {!finding && media === "video" && (
         <label>
           处理对象
-          <select
+          <Dropdown
+            ariaLabel="处理对象"
             disabled={disabled}
             value={kind}
-            onChange={(e) => setKind(e.target.value)}
-          >
-            <option value="audio" disabled={!tracks?.length}>
-              音轨静音{!tracks?.length ? "（无音轨）" : ""}
-            </option>
-            <option value="region">画面区域遮挡</option>
-          </select>
+            onChange={(v) => setKind(v)}
+            options={[
+              {
+                value: "audio",
+                label: "音轨静音" + (!tracks?.length ? "（无音轨）" : ""),
+                disabled: !tracks?.length,
+              },
+              { value: "region", label: "画面区域遮挡" },
+            ]}
+          />
         </label>
       )}
       {media !== "image" && (

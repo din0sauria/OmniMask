@@ -16,6 +16,16 @@ export const STATUS_LABELS: Record<string, string> = {
   exported: "已导出",
 };
 
+const MODE_LABELS: Record<string, string> = {
+  mask: "打码",
+  delete: "删除",
+  replace: "代号替换",
+  encrypt: "旧实验加密（已停用）",
+  offset: "数字偏移",
+};
+
+export const modeText = (mode: string) => MODE_LABELS[mode] || mode;
+
 export function StatusPill({ status }: { status: string }) {
   return <span className={`pill status-${status}`}>{STATUS_LABELS[status] || status}</span>;
 }

@@ -87,6 +87,7 @@ export function createTask(data: {
   policy_id?: string;
   operator?: string;
   purpose?: string;
+  voice_change?: "" | "pitch" | "robot" | null;
 }) {
   return api<{ task: Task; warnings: string[] }>(
     "/api/tasks",
@@ -120,7 +121,7 @@ export function review(
   );
 }
 
-export function maskTask(taskId: string, acceptedOnly = false) {
+export function maskTask(taskId: string) {
   return api<{
     stats: {
       findings_applied: number;
@@ -133,7 +134,7 @@ export function maskTask(taskId: string, acceptedOnly = false) {
     task: Task;
   }>(
     `/api/tasks/${taskId}/mask`,
-    jsonInit("POST", { accepted_only: acceptedOnly, background: true }),
+    jsonInit("POST", { accepted_only: false, background: true }),
   );
 }
 
@@ -144,8 +145,6 @@ export function restoreTask(taskId: string) {
   );
 }
 
-export const exportUrl = (id: string, includeMapping = false) =>
-  `/api/tasks/${id}/export?inline=1${includeMapping ? "&include_mapping=true" : ""}`;
 export const restoreDownloadUrl = (id: string) =>
   `/api/tasks/${id}/restore/download?inline=1`;
 export const mappingUrl = (id: string) => `/api/tasks/${id}/mapping`;

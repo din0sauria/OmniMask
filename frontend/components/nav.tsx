@@ -77,6 +77,8 @@ export function SiteHeader() {
         </nav>
         <div
           className={`backend-dot ${online === null ? "wait" : online ? "on" : "off"}`}
+          role="status"
+          aria-live="polite"
         >
           <span className="dot" />
           {online === null

@@ -4,11 +4,14 @@ import Link from "next/link";
 import { AlertIcon } from "@/components/icons";
 
 export default function ErrorPage({
+  error,
   retry,
 }: {
   error: unknown;
   retry: () => void;
 }) {
+  const detail =
+    error instanceof Error && error.message ? error.message : String(error || "");
   return (
     <section className="card route-error" role="alert">
       <span className="error-mark">
@@ -16,6 +19,7 @@ export default function ErrorPage({
       </span>
       <h1>页面暂时无法显示</h1>
       <p className="sub">请重试加载，或返回工作台重新打开任务。</p>
+      {detail && <p className="mono route-error-detail">{detail}</p>}
       <div className="btn-row">
         <button type="button" className="btn btn-primary" onClick={retry}>
           重新加载

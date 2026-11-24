@@ -4,14 +4,16 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createTask,
+  deleteTask,
   detectTask,
   getEnv,
   getPolicies,
   getTasks,
 } from "@/lib/api";
 import type { Policy, TaskListItem } from "@/lib/types";
-import { Empty, formatTime, StatusPill } from "@/components/ui";
+import { Empty, formatTime, modeText, StatusPill } from "@/components/ui";
 import { PathPicker } from "@/components/path-picker";
+import { Dropdown } from "@/components/dropdown";
 import TaskStoragePanel from "@/components/task-storage-panel";
 import {
   AlertIcon,
@@ -21,6 +23,7 @@ import {
   KeyIcon,
   ScanIcon,
   ShieldIcon,
+  XIcon,
 } from "@/components/icons";
 const LAST_PATH = "omnimask:lastPath";
 function suggestedPolicy(path: string) {
@@ -38,19 +41,7 @@ function autoName(p: string) {
       .pop() || "";
   return base ? `${base} 脱敏` : "";
 }
-function modeText(m: string) {
-  return (
-    (
-      {
-        mask: "掩码",
-        delete: "删除",
-        replace: "代号替换",
-        encrypt: "实验加密",
-        offset: "数字偏移",
-      } as Record<string, string>
-    )[m] || m
-  );
-}
+const VOICE_LABEL: Record<string, string> = { "": "不变声", pitch: "升调", robot: "机器声" };
 export default function HomePage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<TaskListItem[]>([]),
@@ -61,13 +52,18 @@ export default function HomePage() {
     [sourcePath, setSourcePath] = useState(""),
     [policyId, setPolicyId] = useState("standard");
   const [operator, setOperator] = useState(""),
-    [purpose, setPurpose] = useState("内部敏感信息检查");
+    [purpose, setPurpose] = useState("内部敏感信息检查"),
+    [voiceChange, setVoiceChange] = useState<"follow" | "" | "pitch" | "robot">("follow");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState(""),
     [status, setStatus] = useState("all"),
     [showAll, setShowAll] = useState(false);
+  const [del, setDel] = useState<TaskListItem | null>(null),
+    [delBusy, setDelBusy] = useState(false),
+    [delError, setDelError] = useState("");
+  const delDialog = useRef<HTMLDialogElement>(null);
   const nameTouched = useRef(false),
     policyTouched = useRef(false),
     operatorTouched = useRef(false),
@@ -89,6 +85,10 @@ export default function HomePage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+  useEffect(() => {
+    if (del && !delDialog.current?.open) delDialog.current?.showModal();
+    else if (!del && delDialog.current?.open) delDialog.current.close();
+  }, [del]);
   useEffect(() => {
     getEnv()
       .then((env) => {
@@ -134,9 +134,9 @@ export default function HomePage() {
         policy_id: policyId,
         operator: operator.trim(),
         purpose: purpose.trim(),
+        voice_change: voiceChange === "follow" ? null : voiceChange,
       });
       rememberPath(sourcePath.trim());
-      // A created task can retry detection on its task page without duplication.
       try {
         await detectTask(task.id, policyId);
       } catch (err) {
@@ -154,7 +154,29 @@ export default function HomePage() {
       setBusy(false);
     }
   }
+  async function remove() {
+    if (!del || delBusy) return;
+    setDelBusy(true);
+    setDelError("");
+    try {
+      await deleteTask(del.id);
+      setDel(null);
+      await reload();
+    } catch (err) {
+      setDelError((err as Error).message);
+    } finally {
+      setDelBusy(false);
+    }
+  }
   const selectedPolicy = policies.find((p) => p.id === policyId);
+  const voiceBadge =
+    voiceChange === "follow"
+      ? selectedPolicy?.voice_change
+        ? "变声效果"
+        : ""
+      : voiceChange
+        ? `变声：${VOICE_LABEL[voiceChange]}`
+        : "不变声";
   const totalFiles = tasks.reduce((n, t) => n + t.file_count, 0),
     totalFindings = tasks.reduce((n, t) => n + t.findings, 0);
   const filtered = tasks.filter(
@@ -278,12 +300,11 @@ export default function HomePage() {
                 </button>
               </div>
               <p id="source-path-hint" className="path-hint">
-                支持代码、文本、图片、音频与视频。最多500个文件；文本1
-                MiB、媒体500 MiB，超限会提示并跳过。
+                支持代码、文本、图片、音频与视频。检测不设文件大小与数量上限。
               </p>
               <div className="home-step-label">
                 <span>2</span>
-                <b>选择处理策略</b>
+                <label htmlFor="home-policy">选择处理策略</label>
                 <Link href="/policies">
                   管理策略
                   <ChevronIcon size={12} />
@@ -291,13 +312,21 @@ export default function HomePage() {
               </div>
               <div className="home-policy-compact">
                 <label className="sr-only" htmlFor="home-policy">处理策略</label>
-                <select id="home-policy" value={policyId} onChange={e => {policyTouched.current = true; setPolicyId(e.target.value);}}>
-                  {policies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <Dropdown
+                  id="home-policy"
+                  ariaLabel="处理策略"
+                  value={policyId}
+                  disabled={busy}
+                  onChange={(v) => {
+                    policyTouched.current = true;
+                    setPolicyId(v);
+                  }}
+                  options={policies.map((p) => ({ value: p.id, label: p.name }))}
+                />
                 <p className="path-hint">{policyTouched.current ? "已保留你手动选择的策略。" : "根据路径扩展名建议策略；目录和未知类型使用标准策略，可自行切换。"}</p>
                 {selectedPolicy && <div className="home-policy-summary">
                   <span className="badge teal">{modeText(selectedPolicy.mode)}</span>
-                  {selectedPolicy.voice_change && <span className="badge">变声效果</span>}
+                  {voiceBadge && <span className="badge">{voiceBadge}</span>}
                   <p>{selectedPolicy.description}</p>
                   <details><summary>查看处理示例</summary><p>仅为示意，实际效果取决于检测与人工审核。图片/视频遮挡选中区域，音频将选中区间静音；变声开关独立生效。</p><code>{selectedPolicy.mode === "delete" ? "手机号 13800138000 → 手机号" : selectedPolicy.mode === "replace" ? "手机号 13800138000 → 手机号 [PHONE_001]" : selectedPolicy.mode === "offset" ? "数字偏移仅适用于匹配的数字文本，不保证不可恢复。" : "手机号 13800138000 → 手机号 138****8000（示意）"}</code></details>
                 </div>}
@@ -307,6 +336,22 @@ export default function HomePage() {
                     hint="请重新加载，或到策略配置页创建策略"
                   />
                 )}
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label htmlFor="home-voice">音频 / 视频变声</label>
+                  <Dropdown
+                    id="home-voice"
+                    ariaLabel="音频 / 视频变声"
+                    value={voiceChange}
+                    onChange={(v) => setVoiceChange(v as typeof voiceChange)}
+                    options={[
+                      { value: "follow", label: `跟随策略（${VOICE_LABEL[selectedPolicy?.voice_change || ""]}）` },
+                      { value: "", label: "不变声，仅静音敏感片段" },
+                      { value: "pitch", label: "升调（四半音）" },
+                      { value: "robot", label: "机器声" },
+                    ]}
+                  />
+                  <p className="path-hint">覆盖所选策略的变声设置；无敏感项命中时也会生效，不等于声纹匿名化。</p>
+                </div>
               </div>
               <details className="home-options">
                 <summary>
@@ -455,21 +500,29 @@ export default function HomePage() {
             }}
             placeholder="搜索任务名称、路径或策略…"
           />
-          <select
-            aria-label="筛选任务状态"
+          <Dropdown
+            ariaLabel="筛选任务状态"
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
+            onChange={(v) => {
+              setStatus(v);
               setShowAll(false);
             }}
-          >
-            <option value="all">全部状态</option>
-            <option value="created">待检测</option>
-            <option value="detected">待审核</option>
-            <option value="reviewed">已审核</option>
-            <option value="masked">已脱敏</option>
-            <option value="exported">已导出</option>
-          </select>
+            options={[
+              { value: "all", label: "全部状态" },
+              { value: "created", label: "待检测" },
+              { value: "queued", label: "排队中" },
+              { value: "detecting", label: "检测中" },
+              { value: "detected", label: "待审核" },
+              { value: "reviewed", label: "已审核" },
+              { value: "masking", label: "脱敏中" },
+              { value: "masked", label: "已脱敏" },
+              { value: "exported", label: "已导出" },
+              { value: "failed", label: "处理失败" },
+              { value: "cancelled", label: "已取消" },
+              { value: "interrupted", label: "已中断" },
+              { value: "partial", label: "部分检测失败" },
+            ]}
+          />
         </div>
         <div className="card-body tight">
           {loading && !tasks.length ? (
@@ -501,32 +554,46 @@ export default function HomePage() {
           ) : (
             <div className="task-list">
               {visible.map((t) => (
-                <Link href={`/tasks/${t.id}`} key={t.id} className="task-row">
-                  <span className="task-row-icon">
-                    <FileIcon size={18} />
-                  </span>
-                  <div className="task-row-main">
-                    <div className="task-name">
-                      <span>{t.name}</span>
-                      <StatusPill status={t.status} />
+                <div className="task-row" key={t.id}>
+                  <Link href={`/tasks/${t.id}`} className="task-row-link">
+                    <span className="task-row-icon">
+                      <FileIcon size={18} />
+                    </span>
+                    <div className="task-row-main">
+                      <div className="task-name">
+                        <span>{t.name}</span>
+                        <StatusPill status={t.status} />
+                      </div>
+                      <div className="task-meta">
+                        <span className="path" title={t.source_path}>
+                          {t.source_path || t.id}
+                        </span>
+                        <span>{t.policy}</span>
+                        <span>{t.file_count} 文件</span>
+                      </div>
                     </div>
-                    <div className="task-meta">
-                      <span className="path" title={t.source_path}>
-                        {t.source_path || t.id}
-                      </span>
-                      <span>{t.policy}</span>
-                      <span>{t.file_count} 文件</span>
+                    <div className="task-row-end">
+                      <span>{formatTime(t.updated_at)}</span>
+                      <b>
+                        {t.findings}
+                        <small> 命中</small>
+                      </b>
                     </div>
-                  </div>
-                  <div className="task-row-end">
-                    <span>{formatTime(t.updated_at)}</span>
-                    <b>
-                      {t.findings}
-                      <small> 命中</small>
-                    </b>
-                  </div>
-                  <ChevronIcon size={16} />
-                </Link>
+                    <ChevronIcon size={16} />
+                  </Link>
+                  <button
+                    type="button"
+                    className="task-del"
+                    aria-label={`删除任务 ${t.name}`}
+                    title="移入回收站"
+                    onClick={() => {
+                      setDel(t);
+                      setDelError("");
+                    }}
+                  >
+                    <XIcon size={15} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -548,6 +615,49 @@ export default function HomePage() {
         )}
       </section>
       <TaskStoragePanel onChanged={reload} />
+      <dialog
+        ref={delDialog}
+        className="confirmation-dialog"
+        aria-labelledby="del-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (!delBusy) setDel(null);
+        }}
+      >
+        {del && (
+          <>
+            <h2 id="del-title">删除任务「{del.name}」？</h2>
+            <p>
+              任务移入回收站，可在「本地任务与存储」中恢复。源文件不会被移动或删除。
+            </p>
+            {delError && (
+              <div className="notice error" role="alert">
+                <AlertIcon size={16} />
+                <span>{delError}</span>
+              </div>
+            )}
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn"
+                autoFocus
+                disabled={delBusy}
+                onClick={() => setDel(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={delBusy}
+                onClick={() => void remove()}
+              >
+                {delBusy ? "删除中…" : "移入回收站"}
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
       {pickerOpen && (
         <PathPicker
           initial={sourcePath}

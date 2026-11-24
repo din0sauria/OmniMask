@@ -10,7 +10,8 @@ import {
   updatePolicy,
 } from "@/lib/api";
 import type { CustomRule, MaskMode, Policy } from "@/lib/types";
-import { Empty } from "@/components/ui";
+import { Empty, modeText } from "@/components/ui";
+import { Dropdown } from "@/components/dropdown";
 import {
   AlertIcon,
   CheckIcon,
@@ -61,14 +62,6 @@ const EMPTY: FormState = {
   voice_change: "",
   use_model: false,
 };
-const modeText = (mode: string) =>
-  ({
-    mask: "打码",
-    delete: "删除",
-    replace: "代号替换",
-    encrypt: "旧实验加密（已停用）",
-    offset: "数字偏移",
-  })[mode] || mode;
 function fromPolicy(p: Policy): FormState {
   return {
     name: p.name,
@@ -101,6 +94,8 @@ export default function PoliciesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [formError, setFormError] = useState("");
+  const [formMsg, setFormMsg] = useState("");
   const [editing, setEditing] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY);
   const [baseline, setBaseline] = useState(JSON.stringify(EMPTY));
@@ -185,7 +180,8 @@ export default function PoliciesPage() {
     return () => document.removeEventListener("click", guardNavigation, true);
   }, [dirty, busy, router]);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setError("");
+    setFormError("");
+    setFormMsg("");
     setForm((f) => ({ ...f, [key]: value }));
   };
   const switchTo = (action: () => void) => {
@@ -212,6 +208,8 @@ export default function PoliciesPage() {
     setEditing(p && !copy ? p.id : "new");
     setError("");
     setMsg("");
+    setFormError("");
+    setFormMsg("");
     window.setTimeout(() => {
       editor.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       document.getElementById("policy-name")?.focus({ preventScroll: true });
@@ -219,14 +217,14 @@ export default function PoliciesPage() {
   }
   async function save() {
     if (busy) return;
-    setError("");
-    setMsg("");
+    setFormError("");
+    setFormMsg("");
     if (form.mode === "encrypt") {
-      setError("旧实验加密已停用，请选择掩码、删除或文本代号替换后保存。");
+      setFormError("旧实验加密已停用，请选择掩码、删除或文本代号替换后保存。");
       return;
     }
     if (!form.name.trim()) {
-      setError("请填写策略名称。");
+      setFormError("请填写策略名称。");
       document.getElementById("policy-name")?.focus();
       return;
     }
@@ -236,7 +234,7 @@ export default function PoliciesPage() {
       form.mask_keep > 16 ||
       !Number.isInteger(form.mask_keep)
     ) {
-      setError("保留字符数须为0–16的整数。");
+      setFormError("保留字符数须为0–16的整数。");
       return;
     }
     if (
@@ -244,7 +242,7 @@ export default function PoliciesPage() {
       form.min_confidence < 0 ||
       form.min_confidence > 1
     ) {
-      setError("置信度须在0–1之间。");
+      setFormError("置信度须在0–1之间。");
       return;
     }
     if (
@@ -256,7 +254,7 @@ export default function PoliciesPage() {
           r.confidence > 1,
       )
     ) {
-      setError("请补全自定义正则，置信度须在0–1之间。");
+      setFormError("请补全自定义正则，置信度须在0–1之间。");
       document.getElementById("policy-advanced")?.setAttribute("open", "");
       return;
     }
@@ -266,7 +264,7 @@ export default function PoliciesPage() {
         !Number.isInteger(form.offset_round) ||
         form.offset_round < 1)
     ) {
-      setError("偏移量须为整数，取整单位须为正整数。");
+      setFormError("偏移量须为整数，取整单位须为正整数。");
       return;
     }
     const payload = {
@@ -293,17 +291,20 @@ export default function PoliciesPage() {
     };
     setBusy(true);
     try {
-      if (editing === "new") await createPolicy(payload);
-      else await updatePolicy(editing, payload);
-      setMsg(
+      const saved =
+        editing === "new"
+          ? await createPolicy(payload)
+          : await updatePolicy(editing, payload);
+      setEditing(saved.id);
+      setBaseline(JSON.stringify(form));
+      setFormMsg(
         editing === "new"
           ? "策略已创建，可在新建任务时选择。"
           : "策略已保存。已有任务需重新检测才能采用新配置。",
       );
-      setEditing("");
       await reload();
     } catch (e) {
-      setError((e as Error).message);
+      setFormError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -367,12 +368,26 @@ export default function PoliciesPage() {
         <div className="notice error" role="alert">
           <AlertIcon />
           <span>{error}</span>
+          <button
+            className="btn btn-sm btn-ghost"
+            aria-label="关闭提示"
+            onClick={() => setError("")}
+          >
+            <XIcon size={13} />
+          </button>
         </div>
       )}
       {msg && (
         <div className="notice success" role="status">
           <CheckIcon />
           <span>{msg}</span>
+          <button
+            className="btn btn-sm btn-ghost"
+            aria-label="关闭提示"
+            onClick={() => setMsg("")}
+          >
+            <XIcon size={13} />
+          </button>
         </div>
       )}
       <div className="policy-page">
@@ -633,23 +648,27 @@ export default function PoliciesPage() {
                     <div className="form-grid">
                       <div className="field">
                         <label htmlFor="policy-mode">文本处理方式</label>
-                        <select
+                        <Dropdown
                           id="policy-mode"
+                          ariaLabel="文本处理方式"
                           value={form.mode}
-                          onChange={(e) =>
-                            set("mode", e.target.value as MaskMode)
-                          }
-                        >
-                          <option value="mask">打码（保留首尾）</option>
-                          <option value="delete">删除</option>
-                          <option value="replace">代号替换</option>
-                          {form.mode === "encrypt" && (
-                            <option value="encrypt" disabled>
-                              旧实验加密（已停用，请更换）
-                            </option>
-                          )}
-                          <option value="offset">数字偏移</option>
-                        </select>
+                          onChange={(v) => set("mode", v as MaskMode)}
+                          options={[
+                            { value: "mask", label: "打码（保留首尾）" },
+                            { value: "delete", label: "删除" },
+                            { value: "replace", label: "代号替换" },
+                            ...(form.mode === "encrypt"
+                              ? [
+                                  {
+                                    value: "encrypt",
+                                    label: "旧实验加密（已停用，请更换）",
+                                    disabled: true,
+                                  },
+                                ]
+                              : []),
+                            { value: "offset", label: "数字偏移" },
+                          ]}
+                        />
                       </div>
                       {form.mode === "mask" && (
                         <div className="field">
@@ -752,15 +771,17 @@ export default function PoliciesPage() {
                   <div className="editor-group-body">
                     <div className="field">
                       <label htmlFor="policy-voice">音频 / 视频变声效果</label>
-                      <select
+                      <Dropdown
                         id="policy-voice"
+                        ariaLabel="音频 / 视频变声效果"
                         value={form.voice_change}
-                        onChange={(e) => set("voice_change", e.target.value)}
-                      >
-                        <option value="">不变声，仅静音敏感片段</option>
-                        <option value="pitch">升调（四半音）</option>
-                        <option value="robot">机器声</option>
-                      </select>
+                        onChange={(v) => set("voice_change", v)}
+                        options={[
+                          { value: "", label: "不变声，仅静音敏感片段" },
+                          { value: "pitch", label: "升调（四半音）" },
+                          { value: "robot", label: "机器声" },
+                        ]}
+                      />
                       <small>
                         变声在无敏感项命中时也生效；不等于声纹匿名化。画面中的已接受区域使用遮挡。
                       </small>
@@ -907,6 +928,15 @@ export default function PoliciesPage() {
                   </div>
                 </details>
               </fieldset>
+              {(formError || formMsg) && (
+                <div
+                  className={`notice ${formError ? "error" : "success"}`}
+                  role={formError ? "alert" : "status"}
+                >
+                  {formError ? <AlertIcon size={15} /> : <CheckIcon size={15} />}
+                  <span>{formError || formMsg}</span>
+                </div>
+              )}
               <div className="editor-actions">
                 <button
                   className="btn btn-primary"
