@@ -17,7 +17,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="OmniMask API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="面向多模态数据的隐私脱敏系统 API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

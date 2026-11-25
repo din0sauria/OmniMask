@@ -84,7 +84,7 @@ def build_report(task: dict, findings: list[dict]) -> dict:
                                                if unknown else '本次没有可通过代号映射还原的已执行文本操作；媒体不提供逆向恢复。'),
     }
     return {
-        "title": "OmniMask 脱敏报告",
+        "title": "面向多模态数据的隐私脱敏系统 脱敏报告",
         "generated_at": now(),
         "task": {
             "id": task["id"],
@@ -128,7 +128,7 @@ def render_markdown(report: dict) -> str:
     p = report["policy"]
     s = report["summary"]
     lines = [
-        "# OmniMask 脱敏报告",
+        "# 面向多模态数据的隐私脱敏系统 脱敏报告",
         "",
         f"- 任务名称：{t['name']}",
         f"- 任务编号：`{t['id']}`",
@@ -170,7 +170,7 @@ def render_markdown(report: dict) -> str:
         "",
         "## 说明",
         "",
-        "- 本报告由 OmniMask 自动生成，覆盖代码密钥与多模态敏感信息检测。",
+        "- 本报告由面向多模态数据的隐私脱敏系统自动生成，覆盖代码密钥与多模态敏感信息检测。",
         "- 源文件目录未被修改；预览与导出使用同一份审核后缓存。",
         "- 仅文本代号替换支持映射还原；映射表请与导出包分开保管。",
         "- 已接受且符合阈值的内容按策略处理；被忽略或低于阈值的内容不会处理。",

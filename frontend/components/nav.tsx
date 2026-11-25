@@ -52,10 +52,7 @@ export function SiteHeader() {
           <span className="brand-mark">
             <ShieldIcon size={20} />
           </span>
-          <span className="brand-name">
-            Omni<span>Mask</span>
-          </span>
-          <span className="brand-tag">面向多模态数据的隐私脱敏系统</span>
+          <span className="brand-name">面向多模态数据的隐私脱敏系统</span>
         </Link>
         <nav className="nav" aria-label="主要导航">
           <Link
